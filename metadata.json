@@ -1,0 +1,6 @@
+{
+  "name": "KudiPulse - Smartwatch Tap-to-Pay Architecture & Suite",
+  "description": "Cross-platform dual-device smartwatch payment system architecture, cryptographic engine, and production code deliverables for the Nigerian financial ecosystem (Wear OS, watchOS, Flutter, Android KeyStore, Apple Secure Enclave & Flutterwave v3).",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
