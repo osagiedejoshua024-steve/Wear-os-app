@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ALL_LANGUAGES, LanguageOption } from '../data/languages';
 import { LinkedBankAccount } from '../types/payment';
 import { TermsAndConditionsModal } from './TermsAndConditionsModal';
@@ -12,6 +12,7 @@ import {
   Shield,
   Smartphone,
   ChevronRight,
+  ChevronLeft,
   Sparkles,
   Volume2,
   Lock,
@@ -68,6 +69,8 @@ interface Props {
   onLinkNewBank?: (bank: Partial<LinkedBankAccount>) => void;
   hasAcceptedTerms?: boolean;
   onAcceptTerms?: () => void;
+  appPasscode?: string;
+  onUpdateAppPasscode?: (newPasscode: string) => void;
 }
 
 export const SettingsView: React.FC<Props> = ({
@@ -77,7 +80,7 @@ export const SettingsView: React.FC<Props> = ({
   onToggleHaptic,
   soundEnabled = true,
   onToggleSound,
-  transactionPin = '7092',
+  transactionPin = '',
   onChangeTransactionPin,
   pinRequiredThreshold = 0,
   onChangePinRequiredThreshold,
@@ -86,11 +89,13 @@ export const SettingsView: React.FC<Props> = ({
   onLinkNewBank,
   hasAcceptedTerms = true,
   onAcceptTerms,
+  appPasscode: appPasscodeProp = '',
+  onUpdateAppPasscode,
 }) => {
-  // Main settings active sub-section tab
+  // Main settings active sub-section tab ('menu' for main horizontal page, or specific page string)
   const [activeSettingsSection, setActiveSettingsSection] = useState<
-    'language' | 'profile' | 'linked_banks' | 'login' | 'sms' | 'security' | 'terms' | 'about' | 'switch_account' | 'close_account'
-  >('linked_banks');
+    'menu' | 'language' | 'profile' | 'linked_banks' | 'login' | 'sms' | 'security' | 'terms' | 'about' | 'switch_account' | 'close_account'
+  >('menu');
 
   // Terms and conditions modal state
   const [isTermsModalOpen, setIsTermsModalOpen] = useState<boolean>(false);
@@ -124,14 +129,27 @@ export const SettingsView: React.FC<Props> = ({
   const [localPin, setLocalPin] = useState<string>(transactionPin);
   const [isEditingPin, setIsEditingPin] = useState<boolean>(false);
   const [pinChangeMsg, setPinChangeMsg] = useState<string | null>(null);
-  // 6-Digit App Entry Password
+  // 6-Digit App Entry Password (Defaults cleared; bound to dynamic login code)
   const [appPasscode, setAppPasscode] = useState<string>(() => {
     try {
-      return localStorage.getItem('kudipulse_app_passcode') || '200007';
+      const stored = localStorage.getItem('kudipulse_app_passcode');
+      if (stored === '200007' || stored === '709240' || stored === '000000' || stored === '2468') {
+        localStorage.removeItem('kudipulse_app_passcode');
+        return '';
+      }
+      return appPasscodeProp || stored || '';
     } catch {
-      return '200007';
+      return appPasscodeProp || '';
     }
   });
+
+  useEffect(() => {
+    if (appPasscodeProp) {
+      setAppPasscode(appPasscodeProp);
+      setTempPasscode(appPasscodeProp);
+    }
+  }, [appPasscodeProp]);
+
   const [isEditingPasscode, setIsEditingPasscode] = useState<boolean>(false);
   const [tempPasscode, setTempPasscode] = useState<string>(appPasscode);
   const [passcodeSuccessMsg, setPasscodeSuccessMsg] = useState<string | null>(null);
@@ -150,7 +168,9 @@ export const SettingsView: React.FC<Props> = ({
   const [switchAction, setSwitchAction] = useState<'options' | 'sign_in' | 'login'>('options');
   const [switchEmailOrPhone, setSwitchEmailOrPhone] = useState<string>('');
   const [switchPassword, setSwitchPassword] = useState<string>('');
-  const [switchNin, setSwitchNin] = useState<string>('84910294819'); // Mandatory 11-digit NIN for Sign In & Login
+  const [switchSignInIdType, setSwitchSignInIdType] = useState<'nin' | 'bvn'>('nin'); // In Sign In: Choice of NIN or BVN (Tier 2+, 18+ yrs)
+  const [switchNin, setSwitchNin] = useState<string>('84910294819');
+  const [switchBvn, setSwitchBvn] = useState<string>('22349018247');
   const [switchNinError, setSwitchNinError] = useState<string | null>(null);
   const [switchRememberDevice, setSwitchRememberDevice] = useState<boolean>(true);
   const [switchStatusMessage, setSwitchStatusMessage] = useState<string | null>(null);
@@ -415,138 +435,330 @@ export const SettingsView: React.FC<Props> = ({
 
   return (
     <div className="space-y-6">
-      {/* Settings Navigation Sub-menu */}
-      <div className="bg-slate-900/90 border border-slate-800 rounded-3xl p-3 shadow-xl flex items-center gap-1.5 overflow-x-auto scrollbar-thin">
-        <button
-          onClick={() => setActiveSettingsSection('language')}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-2xl text-xs font-bold whitespace-nowrap transition-all ${
-            activeSettingsSection === 'language'
-              ? 'bg-emerald-600 text-white shadow-md shadow-emerald-950 ring-1 ring-emerald-400/40'
-              : 'text-slate-400 hover:text-white bg-slate-950/60 hover:bg-slate-800'
-          }`}
-        >
-          <Languages className="w-4 h-4 text-emerald-300" />
-          <span>*Language</span>
-          <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-slate-900 text-emerald-300 border border-emerald-800">
-            {currentLanguage.flag} {currentLanguage.code.toUpperCase()}
-          </span>
-        </button>
+      {/* Navigation & Breadcrumb Header: Switch between Full Horizontal Menu and Dedicated Page */}
+      {activeSettingsSection !== 'menu' ? (
+        <div className="flex items-center justify-between bg-slate-900/90 border border-slate-800 rounded-3xl p-3 shadow-xl">
+          <button
+            type="button"
+            onClick={() => setActiveSettingsSection('menu')}
+            className="flex items-center gap-2 px-3.5 py-2 rounded-2xl text-xs font-bold bg-slate-800 hover:bg-slate-700 text-cyan-300 transition-all cursor-pointer shadow-sm"
+          >
+            <ChevronLeft className="w-4 h-4" />
+            <span>Back to Settings Menu</span>
+          </button>
 
-        <button
-          onClick={() => setActiveSettingsSection('profile')}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-2xl text-xs font-bold whitespace-nowrap transition-all ${
-            activeSettingsSection === 'profile'
-              ? 'bg-emerald-600 text-white shadow-md shadow-emerald-950 ring-1 ring-emerald-400/40'
-              : 'text-slate-400 hover:text-white bg-slate-950/60 hover:bg-slate-800'
-          }`}
-        >
-          <User className="w-4 h-4 text-cyan-400" />
-          <span>*Profile</span>
-        </button>
+          {/* Quick Horizontal Carousel on subpages for fast switching */}
+          <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-thin max-w-xl">
+            <button
+              onClick={() => setActiveSettingsSection('language')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
+                activeSettingsSection === 'language'
+                  ? 'bg-emerald-600 text-white'
+                  : 'text-slate-400 hover:text-white bg-slate-950/60'
+              }`}
+            >
+              Language
+            </button>
+            <button
+              onClick={() => setActiveSettingsSection('profile')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
+                activeSettingsSection === 'profile'
+                  ? 'bg-emerald-600 text-white'
+                  : 'text-slate-400 hover:text-white bg-slate-950/60'
+              }`}
+            >
+              Profile
+            </button>
+            <button
+              onClick={() => setActiveSettingsSection('linked_banks')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
+                activeSettingsSection === 'linked_banks'
+                  ? 'bg-emerald-600 text-white'
+                  : 'text-slate-400 hover:text-white bg-slate-950/60'
+              }`}
+            >
+              Linked Banks
+            </button>
+            <button
+              onClick={() => setActiveSettingsSection('login')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
+                activeSettingsSection === 'login'
+                  ? 'bg-emerald-600 text-white'
+                  : 'text-slate-400 hover:text-white bg-slate-950/60'
+              }`}
+            >
+              Login Settings
+            </button>
+            <button
+              onClick={() => setActiveSettingsSection('sms')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
+                activeSettingsSection === 'sms'
+                  ? 'bg-emerald-600 text-white'
+                  : 'text-slate-400 hover:text-white bg-slate-950/60'
+              }`}
+            >
+              SMS Alerts
+            </button>
+            <button
+              onClick={() => setActiveSettingsSection('security')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
+                activeSettingsSection === 'security'
+                  ? 'bg-emerald-600 text-white'
+                  : 'text-slate-400 hover:text-white bg-slate-950/60'
+              }`}
+            >
+              Security Centre
+            </button>
+            <button
+              onClick={() => setActiveSettingsSection('terms')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
+                activeSettingsSection === 'terms'
+                  ? 'bg-emerald-600 text-white'
+                  : 'text-slate-400 hover:text-white bg-slate-950/60'
+              }`}
+            >
+              Terms & Conditions
+            </button>
+            <button
+              onClick={() => {
+                setActiveSettingsSection('switch_account');
+                setSwitchAction('options');
+              }}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
+                activeSettingsSection === 'switch_account'
+                  ? 'bg-cyan-600 text-white'
+                  : 'text-cyan-400 hover:text-white bg-cyan-950/40'
+              }`}
+            >
+              Switch Account
+            </button>
+            <button
+              onClick={() => setActiveSettingsSection('close_account')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
+                activeSettingsSection === 'close_account'
+                  ? 'bg-red-600 text-white'
+                  : 'text-red-400 hover:text-red-200 bg-red-950/30'
+              }`}
+            >
+              Close Account
+            </button>
+          </div>
+        </div>
+      ) : (
+        /* HORIZONTAL FORM VIEW OF ALL 9 SETTINGS MODULES */
+        <div className="bg-slate-900/95 border border-slate-800 rounded-3xl p-6 shadow-2xl space-y-5 animate-in fade-in">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-4 border-b border-slate-800/80">
+            <div>
+              <h2 className="text-base font-extrabold text-white uppercase tracking-wider font-mono flex items-center gap-2">
+                <Sliders className="w-5 h-5 text-emerald-400" />
+                <span>Tactical App Configuration Hub</span>
+              </h2>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Tap any category card below to navigate to its dedicated page of settings, controls, and compliance tools.
+              </p>
+            </div>
+            <div className="flex items-center gap-1.5 px-3 py-1 bg-slate-950 rounded-xl border border-slate-800 text-[11px] font-mono text-emerald-400">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
+              <span>9 Modules Active</span>
+            </div>
+          </div>
 
-        <button
-          onClick={() => setActiveSettingsSection('linked_banks')}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-2xl text-xs font-bold whitespace-nowrap transition-all ${
-            activeSettingsSection === 'linked_banks'
-              ? 'bg-emerald-600 text-white shadow-md shadow-emerald-950 ring-1 ring-emerald-400/40'
-              : 'text-slate-400 hover:text-white bg-slate-950/60 hover:bg-slate-800'
-          }`}
-        >
-          <Landmark className="w-4 h-4 text-emerald-400" />
-          <span>*Linked banks</span>
-          <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-slate-900 text-emerald-300 border border-emerald-800 font-bold">
-            {linkedBanks.length} Linked
-          </span>
-        </button>
+          {/* 9 HORIZONTAL TILES IN RESPONSIVE GRID / HORIZONTAL FLOW */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+            {/* 1. Language */}
+            <div
+              onClick={() => setActiveSettingsSection('language')}
+              className="group p-4 bg-slate-950/90 hover:bg-slate-950 border border-slate-800 hover:border-emerald-500 rounded-2xl cursor-pointer transition-all hover:shadow-lg hover:shadow-emerald-950/40 flex items-center justify-between"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400 group-hover:scale-105 transition-transform">
+                  <Languages className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-xs font-bold text-white group-hover:text-emerald-300 transition-colors">
+                    *Language
+                  </h3>
+                  <p className="text-[11px] text-slate-400 mt-0.5">
+                    {currentLanguage.name} ({currentLanguage.flag} {currentLanguage.code.toUpperCase()})
+                  </p>
+                </div>
+              </div>
+              <ChevronRight className="w-4 h-4 text-slate-500 group-hover:text-emerald-400 group-hover:translate-x-1 transition-all" />
+            </div>
 
-        <button
-          onClick={() => setActiveSettingsSection('login')}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-2xl text-xs font-bold whitespace-nowrap transition-all ${
-            activeSettingsSection === 'login'
-              ? 'bg-emerald-600 text-white shadow-md shadow-emerald-950 ring-1 ring-emerald-400/40'
-              : 'text-slate-400 hover:text-white bg-slate-950/60 hover:bg-slate-800'
-          }`}
-        >
-          <KeyRound className="w-4 h-4 text-indigo-400" />
-          <span>*Login settings</span>
-        </button>
+            {/* 2. Profile */}
+            <div
+              onClick={() => setActiveSettingsSection('profile')}
+              className="group p-4 bg-slate-950/90 hover:bg-slate-950 border border-slate-800 hover:border-cyan-500 rounded-2xl cursor-pointer transition-all hover:shadow-lg hover:shadow-cyan-950/40 flex items-center justify-between"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400 group-hover:scale-105 transition-transform">
+                  <User className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-xs font-bold text-white group-hover:text-cyan-300 transition-colors">
+                    *Profile
+                  </h3>
+                  <p className="text-[11px] text-slate-400 mt-0.5 truncate max-w-[150px]">
+                    {fullName}
+                  </p>
+                </div>
+              </div>
+              <ChevronRight className="w-4 h-4 text-slate-500 group-hover:text-cyan-400 group-hover:translate-x-1 transition-all" />
+            </div>
 
-        <button
-          onClick={() => setActiveSettingsSection('sms')}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-2xl text-xs font-bold whitespace-nowrap transition-all ${
-            activeSettingsSection === 'sms'
-              ? 'bg-emerald-600 text-white shadow-md shadow-emerald-950 ring-1 ring-emerald-400/40'
-              : 'text-slate-400 hover:text-white bg-slate-950/60 hover:bg-slate-800'
-          }`}
-        >
-          <MessageSquare className="w-4 h-4 text-amber-400" />
-          <span>*SMS alerts</span>
-        </button>
+            {/* 3. Linked Banks */}
+            <div
+              onClick={() => setActiveSettingsSection('linked_banks')}
+              className="group p-4 bg-slate-950/90 hover:bg-slate-950 border border-slate-800 hover:border-emerald-500 rounded-2xl cursor-pointer transition-all hover:shadow-lg hover:shadow-emerald-950/40 flex items-center justify-between"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400 group-hover:scale-105 transition-transform">
+                  <Landmark className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-xs font-bold text-white group-hover:text-emerald-300 transition-colors">
+                    *Linked banks
+                  </h3>
+                  <p className="text-[11px] text-slate-400 mt-0.5">
+                    {linkedBanks.length} CBN-cleared institutions
+                  </p>
+                </div>
+              </div>
+              <ChevronRight className="w-4 h-4 text-slate-500 group-hover:text-emerald-400 group-hover:translate-x-1 transition-all" />
+            </div>
 
-        <button
-          onClick={() => setActiveSettingsSection('security')}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-2xl text-xs font-bold whitespace-nowrap transition-all ${
-            activeSettingsSection === 'security'
-              ? 'bg-emerald-600 text-white shadow-md shadow-emerald-950 ring-1 ring-emerald-400/40'
-              : 'text-slate-400 hover:text-white bg-slate-950/60 hover:bg-slate-800'
-          }`}
-        >
-          <ShieldAlert className="w-4 h-4 text-teal-400" />
-          <span>*Security centre</span>
-        </button>
+            {/* 4. Login Settings */}
+            <div
+              onClick={() => setActiveSettingsSection('login')}
+              className="group p-4 bg-slate-950/90 hover:bg-slate-950 border border-slate-800 hover:border-indigo-500 rounded-2xl cursor-pointer transition-all hover:shadow-lg hover:shadow-indigo-950/40 flex items-center justify-between"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-indigo-500/10 border border-indigo-500/30 flex items-center justify-center text-indigo-400 group-hover:scale-105 transition-transform">
+                  <KeyRound className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-xs font-bold text-white group-hover:text-indigo-300 transition-colors">
+                    *Login settings
+                  </h3>
+                  <p className="text-[11px] text-slate-400 mt-0.5">
+                    Passcode • PIN • Biometrics
+                  </p>
+                </div>
+              </div>
+              <ChevronRight className="w-4 h-4 text-slate-500 group-hover:text-indigo-400 group-hover:translate-x-1 transition-all" />
+            </div>
 
-        <button
-          onClick={() => setActiveSettingsSection('terms')}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-2xl text-xs font-bold whitespace-nowrap transition-all ${
-            activeSettingsSection === 'terms'
-              ? 'bg-emerald-600 text-white shadow-md shadow-emerald-950 ring-1 ring-emerald-400/40'
-              : 'text-slate-400 hover:text-white bg-slate-950/60 hover:bg-slate-800'
-          }`}
-        >
-          <Scale className="w-4 h-4 text-cyan-400" />
-          <span>*Terms & Conditions</span>
-        </button>
+            {/* 5. SMS Alerts */}
+            <div
+              onClick={() => setActiveSettingsSection('sms')}
+              className="group p-4 bg-slate-950/90 hover:bg-slate-950 border border-slate-800 hover:border-amber-500 rounded-2xl cursor-pointer transition-all hover:shadow-lg hover:shadow-amber-950/40 flex items-center justify-between"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 group-hover:scale-105 transition-transform">
+                  <MessageSquare className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-xs font-bold text-white group-hover:text-amber-300 transition-colors">
+                    *SMS alerts
+                  </h3>
+                  <p className="text-[11px] text-slate-400 mt-0.5">
+                    Debit & Credit Push Dispatch
+                  </p>
+                </div>
+              </div>
+              <ChevronRight className="w-4 h-4 text-slate-500 group-hover:text-amber-400 group-hover:translate-x-1 transition-all" />
+            </div>
 
-        <button
-          onClick={() => setActiveSettingsSection('about')}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-2xl text-xs font-bold whitespace-nowrap transition-all ${
-            activeSettingsSection === 'about'
-              ? 'bg-emerald-600 text-white shadow-md shadow-emerald-950 ring-1 ring-emerald-400/40'
-              : 'text-slate-400 hover:text-white bg-slate-950/60 hover:bg-slate-800'
-          }`}
-        >
-          <Info className="w-4 h-4 text-blue-400" />
-          <span>*About (v3.4.2)</span>
-        </button>
+            {/* 6. Security Centre */}
+            <div
+              onClick={() => setActiveSettingsSection('security')}
+              className="group p-4 bg-slate-950/90 hover:bg-slate-950 border border-slate-800 hover:border-teal-500 rounded-2xl cursor-pointer transition-all hover:shadow-lg hover:shadow-teal-950/40 flex items-center justify-between"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-teal-500/10 border border-teal-500/30 flex items-center justify-center text-teal-400 group-hover:scale-105 transition-transform">
+                  <ShieldAlert className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-xs font-bold text-white group-hover:text-teal-300 transition-colors">
+                    *Security centre
+                  </h3>
+                  <p className="text-[11px] text-slate-400 mt-0.5">
+                    Hardware Enclave & Remote Wipe
+                  </p>
+                </div>
+              </div>
+              <ChevronRight className="w-4 h-4 text-slate-500 group-hover:text-teal-400 group-hover:translate-x-1 transition-all" />
+            </div>
 
-        <button
-          onClick={() => {
-            setActiveSettingsSection('switch_account');
-            setSwitchAction('options');
-            setSwitchStatusMessage(null);
-          }}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-2xl text-xs font-bold whitespace-nowrap transition-all ${
-            activeSettingsSection === 'switch_account'
-              ? 'bg-cyan-600 text-white shadow-md shadow-cyan-950 ring-1 ring-cyan-400/40'
-              : 'text-cyan-400 hover:text-white bg-cyan-950/40 hover:bg-cyan-900/60 border border-cyan-800/50'
-          }`}
-        >
-          <ArrowRightLeft className="w-4 h-4 text-cyan-300" />
-          <span>*Switch account</span>
-        </button>
+            {/* 7. Terms and Conditions */}
+            <div
+              onClick={() => setActiveSettingsSection('terms')}
+              className="group p-4 bg-slate-950/90 hover:bg-slate-950 border border-slate-800 hover:border-blue-500 rounded-2xl cursor-pointer transition-all hover:shadow-lg hover:shadow-blue-950/40 flex items-center justify-between"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-blue-500/10 border border-blue-500/30 flex items-center justify-center text-blue-400 group-hover:scale-105 transition-transform">
+                  <Scale className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-xs font-bold text-white group-hover:text-blue-300 transition-colors">
+                    *Terms and conditions
+                  </h3>
+                  <p className="text-[11px] text-slate-400 mt-0.5">
+                    CBN Framework & Privacy Policy
+                  </p>
+                </div>
+              </div>
+              <ChevronRight className="w-4 h-4 text-slate-500 group-hover:text-blue-400 group-hover:translate-x-1 transition-all" />
+            </div>
 
-        <button
-          onClick={() => setActiveSettingsSection('close_account')}
-          className={`flex items-center gap-1.5 px-3 py-2 rounded-2xl text-xs font-bold whitespace-nowrap transition-all ${
-            activeSettingsSection === 'close_account'
-              ? 'bg-red-600 text-white shadow-md shadow-red-950 ring-1 ring-red-400/40'
-              : 'text-red-400 hover:text-red-200 bg-red-950/30 hover:bg-red-950/60 border border-red-900/40'
-          }`}
-        >
-          <AlertOctagon className="w-4 h-4 text-red-400" />
-          <span>*|Close account|</span>
-        </button>
-      </div>
+            {/* 8. Switch Account */}
+            <div
+              onClick={() => {
+                setActiveSettingsSection('switch_account');
+                setSwitchAction('options');
+              }}
+              className="group p-4 bg-slate-950/90 hover:bg-slate-950 border border-slate-800 hover:border-cyan-500 rounded-2xl cursor-pointer transition-all hover:shadow-lg hover:shadow-cyan-950/40 flex items-center justify-between"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400 group-hover:scale-105 transition-transform">
+                  <ArrowRightLeft className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-xs font-bold text-white group-hover:text-cyan-300 transition-colors">
+                    *Switch account
+                  </h3>
+                  <p className="text-[11px] text-slate-400 mt-0.5">
+                    Sign In • Log In • NIN & Face Verification
+                  </p>
+                </div>
+              </div>
+              <ChevronRight className="w-4 h-4 text-slate-500 group-hover:text-cyan-400 group-hover:translate-x-1 transition-all" />
+            </div>
+
+            {/* 9. Closed Account */}
+            <div
+              onClick={() => setActiveSettingsSection('close_account')}
+              className="group p-4 bg-red-950/20 hover:bg-red-950/40 border border-red-900/50 hover:border-red-500 rounded-2xl cursor-pointer transition-all hover:shadow-lg hover:shadow-red-950/40 flex items-center justify-between"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-red-500/10 border border-red-500/30 flex items-center justify-center text-red-400 group-hover:scale-105 transition-transform">
+                  <AlertOctagon className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-xs font-bold text-red-300 group-hover:text-red-200 transition-colors">
+                    *Closed account
+                  </h3>
+                  <p className="text-[11px] text-red-300/80 mt-0.5">
+                    Revoke hardware keys & terminate
+                  </p>
+                </div>
+              </div>
+              <ChevronRight className="w-4 h-4 text-red-400 group-hover:translate-x-1 transition-all" />
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Account Terminated Simulation Alert */}
       {accountTerminated && (
@@ -1340,11 +1552,15 @@ export const SettingsView: React.FC<Props> = ({
                 <div className="flex items-center justify-between p-3 bg-slate-900/80 rounded-xl border border-slate-800 text-xs font-mono">
                   <div className="flex items-center gap-2">
                     <span className="text-slate-400 text-[11px]">Passcode:</span>
-                    <span className="text-emerald-300 tracking-widest text-sm font-bold">••••••</span>
-                    <span className="text-[10px] text-slate-500">(Ending in {appPasscode.slice(-2)})</span>
+                    <span className="text-emerald-300 tracking-widest text-sm font-bold">
+                      {appPasscode ? '••••••' : 'Not configured yet'}
+                    </span>
+                    {appPasscode && (
+                      <span className="text-[10px] text-slate-500">(Ending in {appPasscode.slice(-2)})</span>
+                    )}
                   </div>
                   <span className="text-[10px] text-emerald-400 font-bold bg-emerald-950/80 px-2 py-0.5 rounded border border-emerald-800/60">
-                    Or Biometric Scan
+                    Active Code
                   </span>
                 </div>
               ) : (
@@ -1358,20 +1574,21 @@ export const SettingsView: React.FC<Props> = ({
                       maxLength={6}
                       value={tempPasscode}
                       onChange={(e) => setTempPasscode(e.target.value.replace(/\D/g, ''))}
-                      placeholder="e.g. 200007"
+                      placeholder="Enter 6-digit passcode"
                       className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-sm text-center font-mono tracking-widest text-white focus:outline-none focus:border-emerald-500"
                     />
                   </div>
 
                   <div className="flex items-center justify-between pt-1">
                     <span className="text-[10px] font-mono text-slate-400">
-                      Standard default: <strong>200007</strong>
+                      Syncs with App Lock & Smartwatch Screen
                     </span>
                     <button
                       type="button"
                       onClick={() => {
                         if (tempPasscode.length === 6) {
                           setAppPasscode(tempPasscode);
+                          if (onUpdateAppPasscode) onUpdateAppPasscode(tempPasscode);
                           try {
                             localStorage.setItem('kudipulse_app_passcode', tempPasscode);
                           } catch {
@@ -1472,15 +1689,20 @@ export const SettingsView: React.FC<Props> = ({
 
                   <div className="flex items-center justify-between pt-1">
                     <span className="text-[10px] font-mono text-slate-400">
-                      Standard default: <strong>2468</strong>
+                      Format: Strictly 4 digits (POS / ATM Standard)
                     </span>
                     <button
                       type="button"
                       onClick={() => {
                         if (localPin.length === 4) {
                           onChangeTransactionPin && onChangeTransactionPin(localPin);
+                          try {
+                            localStorage.setItem('kudipulse_payment_password', localPin);
+                          } catch {
+                            // ignore
+                          }
                           setIsEditingPin(false);
-                          setPinChangeMsg('Transaction PIN updated successfully!');
+                          setPinChangeMsg('4-Digit payment PIN updated successfully!');
                           setTimeout(() => setPinChangeMsg(null), 3000);
                         }
                       }}
@@ -2041,37 +2263,98 @@ export const SettingsView: React.FC<Props> = ({
                   />
                 </div>
 
-                {/* MANDATORY 11-DIGIT NIN FIELD */}
-                <div className="space-y-1 md:col-span-2">
+                {/* GOVERNMENT IDENTITY FIELD: NIN OR BVN (TIER 2+ 18+ YEARS) */}
+                <div className="space-y-2 md:col-span-2 p-3.5 bg-slate-950 rounded-2xl border border-emerald-900/60">
                   <div className="flex items-center justify-between">
                     <label className="text-emerald-400 font-bold flex items-center gap-1.5">
                       <CreditCard className="w-3.5 h-3.5 text-emerald-400" />
-                      <span>National Identification Number (NIN) - Mandatory:</span>
+                      <span>Government Identity Enrollment (Select NIN or BVN):</span>
                     </label>
                     <span className="text-[10px] font-mono text-emerald-400/90 bg-emerald-950/80 px-2 py-0.5 rounded border border-emerald-800">
                       11 Digits Required
                     </span>
                   </div>
-                  <input
-                    type="text"
-                    maxLength={11}
-                    placeholder="Enter 11-Digit National Identity Number (e.g. 84910294819)"
-                    value={switchNin}
-                    onChange={(e) => {
-                      const sanitized = e.target.value.replace(/\D/g, '');
-                      setSwitchNin(sanitized);
-                      if (sanitized.length === 11) setSwitchNinError(null);
-                    }}
-                    className="w-full px-3.5 py-2.5 bg-slate-900 border border-emerald-800 rounded-xl text-white font-mono tracking-widest text-sm focus:outline-none focus:ring-1 focus:ring-emerald-400"
-                  />
+
+                  {/* Toggle between NIN and BVN */}
+                  <div className="grid grid-cols-2 p-1 bg-slate-900 rounded-xl border border-slate-800 gap-1 text-xs">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSwitchSignInIdType('nin');
+                        setSwitchNinError(null);
+                      }}
+                      className={`py-1.5 rounded-lg font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                        switchSignInIdType === 'nin'
+                          ? 'bg-emerald-600 text-white shadow-sm'
+                          : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      <span>NIN</span>
+                      <span className="text-[9.5px] font-mono opacity-80">(Standard Tier 1)</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSwitchSignInIdType('bvn');
+                        setSwitchNinError(null);
+                      }}
+                      className={`py-1.5 rounded-lg font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                        switchSignInIdType === 'bvn'
+                          ? 'bg-cyan-600 text-white shadow-sm'
+                          : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      <span>BVN</span>
+                      <span className="text-[9px] font-mono px-1 py-0.2 rounded bg-cyan-950 text-cyan-200 border border-cyan-800">
+                        Tier 2+ (18+ yrs)
+                      </span>
+                    </button>
+                  </div>
+
+                  {/* Input for selected ID */}
+                  {switchSignInIdType === 'nin' ? (
+                    <div>
+                      <input
+                        type="text"
+                        maxLength={11}
+                        placeholder="Enter 11-Digit National Identity Number (e.g. 84910294819)"
+                        value={switchNin}
+                        onChange={(e) => {
+                          const sanitized = e.target.value.replace(/\D/g, '');
+                          setSwitchNin(sanitized);
+                          if (sanitized.length === 11) setSwitchNinError(null);
+                        }}
+                        className="w-full px-3.5 py-2.5 bg-slate-900 border border-emerald-800 rounded-xl text-white font-mono tracking-widest text-sm focus:outline-none focus:ring-1 focus:ring-emerald-400"
+                      />
+                      <span className="text-[10px] text-slate-400 mt-1 block">
+                        • <strong>NIN</strong>: NIMC National Identity Number for standard civilian and operator KYC.
+                      </span>
+                    </div>
+                  ) : (
+                    <div>
+                      <input
+                        type="text"
+                        maxLength={11}
+                        placeholder="Enter 11-Digit Bank Verification Number (e.g. 22349018247)"
+                        value={switchBvn}
+                        onChange={(e) => {
+                          const sanitized = e.target.value.replace(/\D/g, '');
+                          setSwitchBvn(sanitized);
+                          if (sanitized.length === 11) setSwitchNinError(null);
+                        }}
+                        className="w-full px-3.5 py-2.5 bg-slate-900 border border-cyan-700 rounded-xl text-white font-mono tracking-widest text-sm focus:outline-none focus:ring-1 focus:ring-cyan-400"
+                      />
+                      <span className="text-[10px] text-cyan-300/90 mt-1 block">
+                        • <strong>BVN</strong>: Required for <strong>Tier 2 and upward accounts (age 18+ years)</strong> for higher tap-to-pay transaction limits under CBN regulations.
+                      </span>
+                    </div>
+                  )}
+
                   {switchNinError && (
                     <span className="text-[10px] font-mono text-red-400 block animate-pulse">
                       {switchNinError}
                     </span>
                   )}
-                  <span className="text-[10px] text-slate-500 block">
-                    NIN is verified with NIMC database. If account anomalies are detected, facial biometrics match is enforced.
-                  </span>
                 </div>
 
                 <div className="space-y-1">
@@ -2079,7 +2362,7 @@ export const SettingsView: React.FC<Props> = ({
                   <input
                     type="password"
                     maxLength={6}
-                    placeholder="Enter 6-digit code (e.g. 200007)"
+                    placeholder="Enter 6-digit passcode"
                     value={switchPassword}
                     onChange={(e) => setSwitchPassword(e.target.value)}
                     className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-xl text-white font-mono focus:outline-none focus:border-emerald-500"
@@ -2111,19 +2394,24 @@ export const SettingsView: React.FC<Props> = ({
                   type="button"
                   disabled={isSwitchingLoading}
                   onClick={() => {
-                    if (switchNin.length !== 11) {
-                      setSwitchNinError('Valid 11-digit NIN is mandatory to sign in');
+                    const candidateId = switchSignInIdType === 'bvn' ? switchBvn : switchNin;
+                    if (candidateId.length !== 11) {
+                      setSwitchNinError(
+                        switchSignInIdType === 'bvn'
+                          ? 'Valid 11-digit BVN is required for Tier 2+ (18+ years) registration'
+                          : 'Valid 11-digit NIN is mandatory to sign in'
+                      );
                       return;
                     }
 
-                    // Check if account behavior status triggers Face Recognition to match NIN
+                    // Check if account behavior status triggers Face Recognition to match ID
                     const isMisbehaved = accountRiskStatus !== 'normal';
                     if (isMisbehaved) {
                       setPendingAuthPayload({
                         type: 'sign_in',
                         name: switchEmailOrPhone.trim() || 'NEW OPERATOR',
                         identifier: switchEmailOrPhone.trim() || 'operator@kudipulse.ng',
-                        nin: switchNin,
+                        nin: candidateId,
                       });
                       setIsFaceVerificationModalOpen(true);
                       setFaceScanProgress(0);
@@ -2133,13 +2421,17 @@ export const SettingsView: React.FC<Props> = ({
                     }
 
                     setIsSwitchingLoading(true);
-                    setSwitchStatusMessage('Signing in and registering operator keys with NIMC clearance...');
+                    setSwitchStatusMessage(
+                      `Signing in and registering operator keys with ${switchSignInIdType === 'bvn' ? 'NIBSS BVN Tier-2' : 'NIMC NIN'} clearance...`
+                    );
                     setTimeout(() => {
                       if (switchEmailOrPhone.trim()) {
                         setFullName(switchEmailOrPhone.trim());
                       }
                       setIsSwitchingLoading(false);
-                      setSwitchStatusMessage('Sign In Successful! NIN Verified and switched to new account.');
+                      setSwitchStatusMessage(
+                        `Sign In Successful! ${switchSignInIdType === 'bvn' ? 'BVN Tier-2 (18+ yrs)' : 'NIN'} Verified and switched to new account.`
+                      );
                       setSwitchAction('options');
                       setTimeout(() => setSwitchStatusMessage(null), 3000);
                     }, 1000);
@@ -2217,7 +2509,7 @@ export const SettingsView: React.FC<Props> = ({
                   <input
                     type="password"
                     maxLength={6}
-                    placeholder="Enter 6-digit code (e.g. 200007)"
+                    placeholder="Enter 6-digit passcode"
                     value={switchPassword}
                     onChange={(e) => setSwitchPassword(e.target.value)}
                     className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-xl text-white font-mono focus:outline-none focus:border-indigo-500"

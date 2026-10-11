@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { DevicePlatform, PaymentMode, SmartwatchPayload, EncryptedPacket, LinkedBankAccount } from '../types/payment';
 import { cryptoEngine } from '../services/cryptoEngine';
 import { liveDataGateway, InternetConnectionStatus, LiveMarketRates } from '../services/liveDataGateway';
-import { Radio, QrCode, Wifi, WifiOff, Globe, RotateCw, CheckCircle2, ShieldCheck, Zap, Watch, Building2, Wallet, Eye, EyeOff, KeyRound, Delete, ArrowLeft, Lock, Unlock, Landmark, ChevronDown, Check, Hash, Edit3, UserCheck, Search, Loader2, Fingerprint, ScanFace, ShieldAlert, RefreshCw, Activity } from 'lucide-react';
+import { Radio, QrCode, Wifi, WifiOff, Globe, RotateCw, CheckCircle2, ShieldCheck, Zap, Watch, Building2, Wallet, Eye, EyeOff, KeyRound, Delete, ArrowLeft, Lock, Unlock, Landmark, ChevronDown, Check, Hash, Edit3, UserCheck, Search, Loader2, Fingerprint, ScanFace, ShieldAlert, RefreshCw, Activity, Palette, Image as ImageIcon, Shield } from 'lucide-react';
 
 export const NIGERIAN_BANKS_CATALOG = [
   { name: 'Zenith Bank PLC', code: '057' },
@@ -25,6 +25,7 @@ interface Props {
   linkedBanks?: LinkedBankAccount[];
   activeBank?: LinkedBankAccount;
   onSwitchActiveBank?: (bankId: string) => void;
+  watchPasscode?: string;
 }
 
 export const MERCHANT_PRESETS = [
@@ -61,11 +62,12 @@ export const SmartwatchSimulator: React.FC<Props> = ({
   isProcessing,
   lastWatchStatus,
   accountBalance = 485250.0,
-  transactionPin = '7092',
+  transactionPin = '',
   pinRequiredThreshold = 0,
   linkedBanks = [],
   activeBank,
   onSwitchActiveBank,
+  watchPasscode: watchPasscodeProp,
 }) => {
   // Smartwatch Amount Input State: defaults to empty string so user enters custom figure with blinking cursor |
   const [amountInput, setAmountInput] = useState<string>('');
@@ -97,11 +99,68 @@ export const SmartwatchSimulator: React.FC<Props> = ({
   // Smartwatch Wrist Lock Screen Gate State (Requires 6-Digit Password or Biometric Scan before watch screen opens)
   const [isWatchLocked, setIsWatchLocked] = useState<boolean>(true);
   const [watchAuthMode, setWatchAuthMode] = useState<'passcode' | 'biometric'>('passcode');
-  const [watchPasscode, setWatchPasscode] = useState<string>('200007');
+  const [watchPasscode, setWatchPasscode] = useState<string>(() => {
+    try {
+      const stored = localStorage.getItem('kudipulse_app_passcode');
+      if (stored === '200007' || stored === '709240' || stored === '000000' || stored === '2468') {
+        localStorage.removeItem('kudipulse_app_passcode');
+        return '';
+      }
+      return watchPasscodeProp || stored || '';
+    } catch {
+      return watchPasscodeProp || '';
+    }
+  });
+
+  useEffect(() => {
+    if (watchPasscodeProp) {
+      setWatchPasscode(watchPasscodeProp);
+    }
+  }, [watchPasscodeProp]);
+
   const [watchEnteredPasscode, setWatchEnteredPasscode] = useState<string>('');
   const [watchPasscodeError, setWatchPasscodeError] = useState<string | null>(null);
   const [watchBiometricScanning, setWatchBiometricScanning] = useState<boolean>(false);
   const [watchUnlockSuccess, setWatchUnlockSuccess] = useState<boolean>(false);
+
+  // Smartwatch Tactical Wallpapers Catalog
+  const WATCH_WALLPAPERS = [
+    {
+      id: 'emerald_cyber',
+      name: 'Cyber Neon HUD',
+      subtitle: 'Tactical Reticle Matrix',
+      badge: 'Active Standard',
+      src: '/src/assets/images/tactical_emerald_cyber_1791659336988.jpg',
+      themeColor: 'emerald',
+    },
+    {
+      id: 'midnight_camo',
+      name: 'Hex Titanium Camo',
+      subtitle: 'Midnight Stealth Grid',
+      badge: 'Covert Ops',
+      src: '/src/assets/images/tactical_midnight_camo_1791659354140.jpg',
+      themeColor: 'cyan',
+    },
+    {
+      id: 'gold_sovereign',
+      name: 'Kevlar Sovereign CBN',
+      subtitle: 'Matte Black & Gold Coin',
+      badge: 'Executive',
+      src: '/src/assets/images/tactical_gold_sovereign_1791659369487.jpg',
+      themeColor: 'amber',
+    },
+    {
+      id: 'pure_tactical_black',
+      name: 'OLED Tactical Stealth',
+      subtitle: 'Pitch Matte Minimal',
+      badge: 'Power Saver',
+      src: '',
+      themeColor: 'slate',
+    },
+  ];
+
+  const [selectedWallpaperId, setSelectedWallpaperId] = useState<string>('emerald_cyber');
+  const [isWallpaperSelectorOpen, setIsWallpaperSelectorOpen] = useState<boolean>(false);
 
   // Smartwatch Internet Access & Live Cloud Data Sync State
   const [internetStatus, setInternetStatus] = useState<InternetConnectionStatus>({
@@ -394,13 +453,16 @@ export const SmartwatchSimulator: React.FC<Props> = ({
     }
   };
 
+  // Payment PIN is strictly 4 digits (Nigerian POS/ATM Banking standard)
+  const requiredPinLength = 4;
+
   const handleKeyPress = (digit: string) => {
-    if (enteredPin.length < 4) {
+    if (enteredPin.length < requiredPinLength) {
       const nextPin = enteredPin + digit;
       setEnteredPin(nextPin);
       setPinError(null);
 
-      if (nextPin.length === 4) {
+      if (nextPin.length === requiredPinLength) {
         verifyPinAndExecute(nextPin);
       }
     }
@@ -446,13 +508,17 @@ export const SmartwatchSimulator: React.FC<Props> = ({
   };
 
   const verifyWatchPasscode = (code: string) => {
-    // Check against configured watch passcode 200007
-    if (
-      code === watchPasscode ||
-      code === '200007' ||
-      code === '709240' ||
-      code === '000000'
-    ) {
+    // Check against operator's active passcode (purged of all default passwords)
+    const effectivePasscode = watchPasscodeProp || watchPasscode || localStorage.getItem('kudipulse_app_passcode') || '';
+    if (effectivePasscode ? code === effectivePasscode : code.length === 6) {
+      if (!effectivePasscode) {
+        setWatchPasscode(code);
+        try {
+          localStorage.setItem('kudipulse_app_passcode', code);
+        } catch {
+          // ignore
+        }
+      }
       setWatchUnlockSuccess(true);
       setTimeout(() => {
         setIsWatchLocked(false);
@@ -461,7 +527,7 @@ export const SmartwatchSimulator: React.FC<Props> = ({
         setWatchPasscodeError(null);
       }, 500);
     } else {
-      setWatchPasscodeError('Invalid 6-Digit Code');
+      setWatchPasscodeError('Invalid 6-Digit Passcode');
       setTimeout(() => {
         setWatchEnteredPasscode('');
       }, 700);
@@ -485,7 +551,41 @@ export const SmartwatchSimulator: React.FC<Props> = ({
   };
 
   const verifyPinAndExecute = (pinToTest: string) => {
-    if (pinToTest === transactionPin) {
+    // 1. Strictly prioritize 4-digit payment password (payment PIN)
+    let paymentPin = '';
+    try {
+      const storedPay = localStorage.getItem('kudipulse_payment_password');
+      if (storedPay && storedPay !== '200007' && storedPay !== '709240' && storedPay !== '000000' && storedPay !== '2468') {
+        paymentPin = storedPay.slice(0, 4);
+      }
+    } catch {
+      // ignore
+    }
+
+    if (!paymentPin && transactionPin) {
+      paymentPin = transactionPin.slice(0, 4);
+    }
+
+    // Fallback: If no payment PIN was explicitly configured, check first 4 digits of login passcode
+    if (!paymentPin) {
+      const fallback = watchPasscodeProp || watchPasscode;
+      if (fallback) paymentPin = fallback.slice(0, 4);
+    }
+
+    // Verify against 4-digit payment PIN (or if none set yet, store entered 4 digits as payment PIN)
+    let isMatched = false;
+    if (paymentPin) {
+      isMatched = pinToTest === paymentPin;
+    } else {
+      isMatched = pinToTest.length === 4;
+      try {
+        localStorage.setItem('kudipulse_payment_password', pinToTest);
+      } catch {
+        // ignore
+      }
+    }
+
+    if (isMatched) {
       setIsPinSuccessAnimation(true);
       setTimeout(() => {
         setIsPinModalActive(false);
@@ -494,10 +594,11 @@ export const SmartwatchSimulator: React.FC<Props> = ({
         executeSignedPayment();
       }, 400);
     } else {
-      setPinError('Invalid PIN');
+      setPinError('Incorrect Payment PIN');
       setTimeout(() => {
         setEnteredPin('');
-      }, 700);
+        setPinError(null);
+      }, 900);
     }
   };
 
@@ -587,6 +688,20 @@ export const SmartwatchSimulator: React.FC<Props> = ({
         >
           {isWatchLocked ? <Lock className="w-3.5 h-3.5 text-white" /> : <Unlock className="w-3.5 h-3.5" />}
           <span>{isWatchLocked ? 'Locked' : 'Lock Watch'}</span>
+        </button>
+
+        {/* Wallpaper Picker Button */}
+        <button
+          onClick={() => setIsWallpaperSelectorOpen(!isWallpaperSelectorOpen)}
+          className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+            isWallpaperSelectorOpen
+              ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md shadow-emerald-950'
+              : 'text-emerald-400 hover:text-white bg-slate-950/80 border border-emerald-900/50'
+          }`}
+          title="Choose tactical watchface wallpaper"
+        >
+          <Palette className="w-3.5 h-3.5 text-emerald-400" />
+          <span>Wallpaper</span>
         </button>
       </div>
 
@@ -757,9 +872,25 @@ export const SmartwatchSimulator: React.FC<Props> = ({
             </button>
           </div>
 
+          {/* Active Wallpaper Background Image Layer */}
+          {selectedWallpaperId !== 'pure_tactical_black' && (
+            <div
+              className={`absolute inset-0 pointer-events-none transition-all duration-500 overflow-hidden ${
+                platform === 'wear_os' ? 'rounded-full' : 'rounded-[34px]'
+              }`}
+            >
+              <img
+                src={WATCH_WALLPAPERS.find((w) => w.id === selectedWallpaperId)?.src}
+                alt="Tactical Wallpaper"
+                className="w-full h-full object-cover opacity-25 mix-blend-screen scale-110"
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-slate-950/85 via-slate-950/60 to-slate-950/85" />
+            </div>
+          )}
+
           {/* Interactive Screen Area */}
           <div
-            className={`w-full h-full flex flex-col items-center justify-center p-3 text-center ${
+            className={`relative z-10 w-full h-full flex flex-col items-center justify-center p-3 text-center ${
               platform === 'wear_os' ? 'rounded-full' : 'rounded-[30px]'
             }`}
           >
@@ -926,34 +1057,37 @@ export const SmartwatchSimulator: React.FC<Props> = ({
                       setEnteredPin('');
                       setPinError(null);
                     }}
-                    className="p-1 rounded-full bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-white transition-colors"
+                    className="p-1 rounded-full bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-white transition-colors cursor-pointer"
                     title="Cancel PIN"
                   >
                     <ArrowLeft className="w-3 h-3" />
                   </button>
-                  <span className="text-[10px] font-bold text-white flex items-center gap-1 font-mono">
-                    <KeyRound className="w-2.5 h-2.5 text-emerald-400" />
-                    Enter PIN
+                  <span className="text-[10px] font-bold text-teal-400 flex items-center gap-1 font-mono uppercase tracking-wider">
+                    <KeyRound className="w-2.5 h-2.5 text-teal-400" />
+                    Payment PIN
                   </span>
                   <div className="w-4"></div>
                 </div>
 
                 {/* Amount Confirmation & PIN Dots */}
-                <div className="flex flex-col items-center justify-center my-0.5 space-y-1">
+                <div className="flex flex-col items-center justify-center my-0.5 space-y-0.5">
                   <div className="text-[11px] font-bold text-emerald-400 font-mono">
                     Pay ₦{parsedAmount.toLocaleString('en-NG')}
                   </div>
+                  <span className="text-[8.5px] font-mono text-teal-300 font-bold tracking-wide">
+                    Enter 4-Digit Payment PIN
+                  </span>
 
-                  {/* 4 PIN Dots */}
-                  <div className="flex items-center gap-2.5 my-1">
+                  {/* 4 PIN Dots (Strictly 4 digits) */}
+                  <div className="flex items-center gap-2 my-1">
                     {[0, 1, 2, 3].map((idx) => {
                       const isFilled = enteredPin.length > idx;
                       return (
                         <div
                           key={idx}
-                          className={`w-3 h-3 rounded-full border transition-all duration-150 ${
+                          className={`w-3.5 h-3.5 rounded-full border transition-all duration-150 ${
                             isPinSuccessAnimation
-                              ? 'bg-emerald-400 border-emerald-300 scale-110 shadow-sm shadow-emerald-500'
+                              ? 'bg-teal-400 border-teal-300 scale-110 shadow-sm shadow-teal-500'
                               : pinError
                               ? 'bg-red-500 border-red-400 scale-105 animate-shake'
                               : isFilled
@@ -971,10 +1105,12 @@ export const SmartwatchSimulator: React.FC<Props> = ({
                       <span className="text-red-400 font-bold animate-pulse">{pinError}</span>
                     ) : isPinSuccessAnimation ? (
                       <span className="text-emerald-400 font-bold flex items-center gap-1">
-                        <CheckCircle2 className="w-2.5 h-2.5" /> PIN Verified
+                        <CheckCircle2 className="w-2.5 h-2.5 text-emerald-400" /> PIN Verified
                       </span>
                     ) : (
-                      <span className="text-slate-400 text-[8px]">KudiPulse Security Key</span>
+                      <span className="text-teal-400/90 text-[8px] font-mono font-medium">
+                        4-Digit Payment Authorization PIN
+                      </span>
                     )}
                   </div>
                 </div>
@@ -1431,7 +1567,7 @@ export const SmartwatchSimulator: React.FC<Props> = ({
                     </div>
 
                     <div className="text-[7.5px] font-mono text-slate-500 mt-1">
-                      Code: <strong className="text-emerald-400">200007</strong> • Or tap BIO
+                      {watchPasscodeProp || watchPasscode ? 'Enter 6-digit passcode' : 'Enter 6-digit code'} • Or tap BIO
                     </div>
                   </div>
                 ) : (
@@ -1508,6 +1644,96 @@ export const SmartwatchSimulator: React.FC<Props> = ({
         {/* Watch Strap Bottom */}
         <div className="w-32 h-7 bg-gradient-to-t from-slate-900 to-slate-800 mx-auto rounded-b-xl border-b border-x border-slate-700/50 opacity-90"></div>
       </div>
+
+      {/* ============================================================ */}
+      {/* TACTICAL WALLPAPER SELECTOR MODAL / DRAWER                  */}
+      {/* ============================================================ */}
+      {isWallpaperSelectorOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 max-w-lg w-full shadow-2xl space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <div className="flex items-center gap-2 text-emerald-400 font-mono font-bold text-sm">
+                <Palette className="w-4 h-4" />
+                <span>Select Tactical Smartwatch Wallpaper</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsWallpaperSelectorOpen(false)}
+                className="text-slate-400 hover:text-white cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-400">
+              Choose your military-spec HUD wallpaper to apply on your Wear OS or watchOS watchface dial.
+            </p>
+
+            {/* Grid of Wallpapers */}
+            <div className="grid grid-cols-2 gap-3">
+              {WATCH_WALLPAPERS.map((wp) => {
+                const isSelected = selectedWallpaperId === wp.id;
+                return (
+                  <div
+                    key={wp.id}
+                    onClick={() => {
+                      setSelectedWallpaperId(wp.id);
+                      setIsWallpaperSelectorOpen(false);
+                    }}
+                    className={`group relative p-2.5 rounded-2xl border transition-all cursor-pointer flex flex-col items-center text-center overflow-hidden ${
+                      isSelected
+                        ? 'bg-slate-950 border-emerald-400 ring-2 ring-emerald-400/30 shadow-lg shadow-emerald-950'
+                        : 'bg-slate-950/70 border-slate-800 hover:border-slate-700 hover:bg-slate-950'
+                    }`}
+                  >
+                    {/* Wallpaper Preview Thumbnail */}
+                    <div className="relative w-full h-28 rounded-xl overflow-hidden bg-slate-900 mb-2 border border-slate-800/80 flex items-center justify-center">
+                      {wp.src ? (
+                        <img
+                          src={wp.src}
+                          alt={wp.name}
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                        />
+                      ) : (
+                        <div className="w-full h-full bg-slate-950 flex flex-col items-center justify-center text-slate-600">
+                          <Shield className="w-8 h-8 opacity-40" />
+                          <span className="text-[10px] font-mono mt-1">Pitch Black</span>
+                        </div>
+                      )}
+                      {isSelected && (
+                        <div className="absolute top-1.5 right-1.5 p-1 bg-emerald-500 rounded-full text-slate-950 shadow-md">
+                          <Check className="w-3 h-3 stroke-[3]" />
+                        </div>
+                      )}
+                      <span className="absolute bottom-1.5 left-1.5 px-2 py-0.5 rounded text-[8.5px] font-mono font-bold bg-slate-950/90 text-white border border-slate-700">
+                        {wp.badge}
+                      </span>
+                    </div>
+
+                    <h4 className="text-xs font-bold text-white group-hover:text-emerald-300 transition-colors">
+                      {wp.name}
+                    </h4>
+                    <p className="text-[10px] text-slate-400 font-mono mt-0.5">
+                      {wp.subtitle}
+                    </p>
+
+                    <button
+                      type="button"
+                      className={`w-full mt-2 py-1 rounded-lg text-[10px] font-bold font-mono transition-all ${
+                        isSelected
+                          ? 'bg-emerald-600 text-white'
+                          : 'bg-slate-900 text-slate-400 group-hover:text-white group-hover:bg-slate-800'
+                      }`}
+                    >
+                      {isSelected ? 'Active Wallpaper' : 'Set as Watchface'}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

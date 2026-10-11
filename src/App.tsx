@@ -161,10 +161,39 @@ export default function App() {
   const [currentLanguage, setCurrentLanguage] = useState<LanguageOption>(ALL_LANGUAGES[0]);
   const [hapticEnabled, setHapticEnabled] = useState<boolean>(true);
   const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
-  const [transactionPin, setTransactionPin] = useState<string>('2468');
+  // 6-Digit App Security Passcode (Defaults cleared; populated strictly from whatever operator logs in with)
+  const [appPasscode, setAppPasscode] = useState<string>(() => {
+    try {
+      const stored = localStorage.getItem('kudipulse_app_passcode');
+      if (stored === '200007' || stored === '709240' || stored === '000000' || stored === '2468') {
+        localStorage.removeItem('kudipulse_app_passcode');
+        return '';
+      }
+      return stored || '';
+    } catch {
+      return '';
+    }
+  });
+  const [transactionPin, setTransactionPin] = useState<string>(() => {
+    try {
+      const storedPay = localStorage.getItem('kudipulse_payment_password');
+      if (storedPay && storedPay !== '200007' && storedPay !== '709240' && storedPay !== '000000' && storedPay !== '2468') {
+        return storedPay.slice(0, 4);
+      }
+      const stored = localStorage.getItem('kudipulse_app_passcode');
+      if (stored && stored !== '200007' && stored !== '709240' && stored !== '000000' && stored !== '2468') {
+        return stored.slice(0, 4);
+      }
+    } catch {
+      // ignore
+    }
+    return '';
+  });
   const [pinRequiredThreshold, setPinRequiredThreshold] = useState<number>(0); // 0 means required for all, or e.g. CBN threshold
-  // Military Authentication Gate: Web shell stays unlocked so smartwatch wrist lock gate is directly testable
-  const [isAppUnlocked, setIsAppUnlocked] = useState<boolean>(true);
+  // Real-life Production Gate: App starts locked so operator MUST Login or Sign In with NIN & Facial check
+  const [isAppUnlocked, setIsAppUnlocked] = useState<boolean>(false);
+  const [currentOperatorName, setCurrentOperatorName] = useState<string>('Col. Osagiede Joshua');
+  const [currentOperatorEmail, setCurrentOperatorEmail] = useState<string>('osagiedejoshua024@gmail.com');
   const logCounterRef = useRef<number>(0);
 
   // Global Internet & Cloud Data Access State
@@ -362,12 +391,38 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-emerald-500 selection:text-slate-950">
-      {/* Military Authentication Gate: App blocked until 6-digit password or biometric scan verified */}
+      {/* Real-Life Authentication Gate: App blocked until user logs in or signs in with NIN */}
       {!isAppUnlocked && (
         <AppLockScreen
-          onUnlock={() => setIsAppUnlocked(true)}
-          userEmail="osagiedejoshua024@gmail.com"
-          userName="Col. Osagiede Joshua"
+          onUnlock={(auth) => {
+            if (auth?.name) setCurrentOperatorName(auth.name);
+            if (auth?.email) setCurrentOperatorEmail(auth.email);
+            if (auth?.passcode) {
+              setAppPasscode(auth.passcode);
+              try {
+                localStorage.setItem('kudipulse_app_passcode', auth.passcode);
+              } catch {
+                // ignore
+              }
+            }
+            if (auth?.paymentPassword) {
+              const fourDigitPay = auth.paymentPassword.slice(0, 4);
+              setTransactionPin(fourDigitPay);
+              try {
+                localStorage.setItem('kudipulse_payment_password', fourDigitPay);
+              } catch {
+                // ignore
+              }
+            } else if (auth?.passcode) {
+              const fourDigitFallback = auth.passcode.slice(0, 4);
+              setTransactionPin(fourDigitFallback);
+            }
+            setIsAppUnlocked(true);
+          }}
+          userEmail={currentOperatorEmail}
+          userName={currentOperatorName}
+          currentPasscode={appPasscode}
+          currentPaymentPassword={transactionPin}
         />
       )}
 
@@ -580,6 +635,7 @@ export default function App() {
                   lastWatchStatus={lastWatchStatus}
                   accountBalance={activeBank ? activeBank.balance : accountBalance}
                   transactionPin={transactionPin}
+                  watchPasscode={appPasscode}
                   pinRequiredThreshold={pinRequiredThreshold}
                   linkedBanks={linkedBanks}
                   activeBank={activeBank}
@@ -738,6 +794,16 @@ export default function App() {
             onActivateBank={handleActivateBank}
             hasAcceptedTerms={hasAcceptedTerms}
             onAcceptTerms={() => setHasAcceptedTerms(true)}
+            appPasscode={appPasscode}
+            onUpdateAppPasscode={(newPin) => {
+              setAppPasscode(newPin);
+              setTransactionPin(newPin);
+              try {
+                localStorage.setItem('kudipulse_app_passcode', newPin);
+              } catch {
+                // ignore
+              }
+            }}
           />
         )}
       </main>
