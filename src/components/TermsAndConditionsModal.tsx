@@ -30,12 +30,26 @@ export const TermsAndConditionsModal: React.FC<Props> = ({
   const [agreedToCbn, setAgreedToCbn] = useState<boolean>(hasAccepted);
   const [agreedToTokenization, setAgreedToTokenization] = useState<boolean>(hasAccepted);
 
+  React.useEffect(() => {
+    if (hasAccepted) {
+      setAgreedToMandate(true);
+      setAgreedToCbn(true);
+      setAgreedToTokenization(true);
+    }
+  }, [hasAccepted, isOpen]);
+
   if (!isOpen) return null;
 
   const allAgreed = agreedToMandate && agreedToCbn && agreedToTokenization;
 
+  const handleSelectAllDeclarations = () => {
+    setAgreedToMandate(true);
+    setAgreedToCbn(true);
+    setAgreedToTokenization(true);
+  };
+
   const handleConfirmAcceptance = () => {
-    if (allAgreed && onAccept) {
+    if (onAccept) {
       onAccept();
       onClose();
     }
@@ -147,7 +161,16 @@ export const TermsAndConditionsModal: React.FC<Props> = ({
 
           {/* User Consent Checkboxes */}
           <div className="pt-3 border-t border-slate-800 space-y-2.5 bg-slate-950/60 p-4 rounded-2xl border">
-            <div className="text-xs font-bold text-white mb-1">Mandatory User Declarations:</div>
+            <div className="flex items-center justify-between text-xs font-bold text-white mb-1">
+              <span>Mandatory User Declarations:</span>
+              <button
+                type="button"
+                onClick={handleSelectAllDeclarations}
+                className="text-[10px] text-emerald-400 hover:text-emerald-300 font-mono font-semibold underline cursor-pointer"
+              >
+                Select All Declarations
+              </button>
+            </div>
             
             <label className="flex items-start gap-2.5 cursor-pointer text-[11px] text-slate-300">
               <input

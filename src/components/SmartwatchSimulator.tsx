@@ -1,8 +1,53 @@
 import React, { useState, useEffect } from 'react';
 import { DevicePlatform, PaymentMode, SmartwatchPayload, EncryptedPacket, LinkedBankAccount } from '../types/payment';
+import { ALL_LANGUAGES, LanguageOption } from '../data/languages';
 import { cryptoEngine } from '../services/cryptoEngine';
 import { liveDataGateway, InternetConnectionStatus, LiveMarketRates } from '../services/liveDataGateway';
-import { Radio, QrCode, Wifi, WifiOff, Globe, RotateCw, CheckCircle2, ShieldCheck, Zap, Watch, Building2, Wallet, Eye, EyeOff, KeyRound, Delete, ArrowLeft, Lock, Unlock, Landmark, ChevronDown, Check, Hash, Edit3, UserCheck, Search, Loader2, Fingerprint, ScanFace, ShieldAlert, RefreshCw, Activity, Palette, Image as ImageIcon, Shield } from 'lucide-react';
+import {
+  Radio,
+  QrCode,
+  Wifi,
+  WifiOff,
+  Globe,
+  RotateCw,
+  CheckCircle2,
+  ShieldCheck,
+  Zap,
+  Watch,
+  Building2,
+  Wallet,
+  Eye,
+  EyeOff,
+  KeyRound,
+  Delete,
+  ArrowLeft,
+  Lock,
+  Unlock,
+  Landmark,
+  ChevronDown,
+  ChevronRight,
+  Check,
+  Hash,
+  Edit3,
+  UserCheck,
+  Search,
+  Loader2,
+  Fingerprint,
+  ScanFace,
+  ShieldAlert,
+  RefreshCw,
+  Activity,
+  Palette,
+  Image as ImageIcon,
+  Shield,
+  Info,
+  Sparkles,
+  X,
+  Camera,
+  Sliders,
+  Volume2,
+  Globe2,
+} from 'lucide-react';
 
 export const NIGERIAN_BANKS_CATALOG = [
   { name: 'Zenith Bank PLC', code: '057' },
@@ -21,11 +66,20 @@ interface Props {
   lastWatchStatus: string;
   accountBalance?: number;
   transactionPin?: string;
+  onChangeTransactionPin?: (pin: string) => void;
   pinRequiredThreshold?: number;
+  onChangePinRequiredThreshold?: (threshold: number) => void;
   linkedBanks?: LinkedBankAccount[];
   activeBank?: LinkedBankAccount;
   onSwitchActiveBank?: (bankId: string) => void;
   watchPasscode?: string;
+  onOpenSettings?: () => void;
+  hapticEnabled?: boolean;
+  onToggleHaptic?: () => void;
+  soundEnabled?: boolean;
+  onToggleSound?: () => void;
+  currentLanguage?: LanguageOption;
+  onSelectLanguage?: (lang: LanguageOption) => void;
 }
 
 export const MERCHANT_PRESETS = [
@@ -63,12 +117,53 @@ export const SmartwatchSimulator: React.FC<Props> = ({
   lastWatchStatus,
   accountBalance = 485250.0,
   transactionPin = '',
+  onChangeTransactionPin,
   pinRequiredThreshold = 0,
+  onChangePinRequiredThreshold,
   linkedBanks = [],
   activeBank,
   onSwitchActiveBank,
   watchPasscode: watchPasscodeProp,
+  onOpenSettings,
+  hapticEnabled = true,
+  onToggleHaptic,
+  soundEnabled = true,
+  onToggleSound,
+  currentLanguage,
+  onSelectLanguage,
 }) => {
+  // Smartwatch In-Screen Settings List Modal/Screen State
+  const [isWatchSettingsOpen, setIsWatchSettingsOpen] = useState<boolean>(false);
+  const [watchSettingsFilter, setWatchSettingsFilter] = useState<'all' | 'security' | 'banks' | 'threshold' | 'hardware'>('all');
+  const [isWatchEditingPin, setIsWatchEditingPin] = useState<boolean>(false);
+  const [watchNewPinInput, setWatchNewPinInput] = useState<string>('');
+  const [watchPinSavedMsg, setWatchPinSavedMsg] = useState<string | null>(null);
+  const [watchHapticTriggered, setWatchHapticTriggered] = useState<boolean>(false);
+  const [watchTimeSyncMsg, setWatchTimeSyncMsg] = useState<string | null>(null);
+
+  const handleSaveWatchPin = (pin: string) => {
+    if (pin.length === 4) {
+      onChangeTransactionPin?.(pin);
+      try {
+        localStorage.setItem('kudipulse_payment_password', pin);
+        localStorage.setItem('kudipulse_app_passcode', pin);
+      } catch {}
+      setWatchPinSavedMsg('4-Digit PIN Saved!');
+      setWatchHapticTriggered(true);
+      setTimeout(() => setWatchHapticTriggered(false), 600);
+      setTimeout(() => {
+        setIsWatchEditingPin(false);
+        setWatchNewPinInput('');
+        setWatchPinSavedMsg(null);
+      }, 1100);
+    }
+  };
+
+  const handleTestWatchHaptic = () => {
+    setWatchHapticTriggered(true);
+    setTimeout(() => setWatchHapticTriggered(false), 700);
+  };
+
   // Smartwatch Amount Input State: defaults to empty string so user enters custom figure with blinking cursor |
   const [amountInput, setAmountInput] = useState<string>('');
   const [isAmountPadActive, setIsAmountPadActive] = useState<boolean>(false);
@@ -77,6 +172,42 @@ export const SmartwatchSimulator: React.FC<Props> = ({
   const [isTransmitting, setIsTransmitting] = useState<boolean>(false);
   const [showBalance, setShowBalance] = useState<boolean>(true);
   const [generatedPayload, setGeneratedPayload] = useState<SmartwatchPayload | null>(null);
+
+  // Live Device Time Sync (Follows user's actual device clock in real time)
+  const [deviceTime, setDeviceTime] = useState<string>(() => {
+    return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  });
+
+  useEffect(() => {
+    const updateTime = () => {
+      setDeviceTime(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+    };
+    updateTime();
+    const interval = setInterval(updateTime, 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // NIBSS QR Display & Intel States
+  const [isNqrModalActive, setIsNqrModalActive] = useState<boolean>(false);
+  const [isNqrInfoOpen, setIsNqrInfoOpen] = useState<boolean>(false);
+  const [nqrCountdown, setNqrCountdown] = useState<number>(60);
+
+  // Dynamic NIBSS QR 60s Expiration Countdown
+  useEffect(() => {
+    if (!isNqrModalActive) return;
+    setNqrCountdown(60);
+    const timer = setInterval(() => {
+      setNqrCountdown((prev) => {
+        if (prev <= 1) {
+          clearInterval(timer);
+          setIsNqrModalActive(false);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [isNqrModalActive]);
 
   // Recipient Account Input State on Watch Screen (Direct 10-Digit NUBAN)
   const [customAccountNumber, setCustomAccountNumber] = useState<string>('0129482710');
@@ -449,7 +580,11 @@ export const SmartwatchSimulator: React.FC<Props> = ({
       setIsPinSuccessAnimation(false);
       setIsPinModalActive(true);
     } else {
-      executeSignedPayment();
+      if (mode === 'dynamic_qr') {
+        setIsNqrModalActive(true);
+      } else {
+        executeSignedPayment();
+      }
     }
   };
 
@@ -591,7 +726,11 @@ export const SmartwatchSimulator: React.FC<Props> = ({
         setIsPinModalActive(false);
         setIsPinSuccessAnimation(false);
         setEnteredPin('');
-        executeSignedPayment();
+        if (mode === 'dynamic_qr') {
+          setIsNqrModalActive(true);
+        } else {
+          executeSignedPayment();
+        }
       }, 400);
     } else {
       setPinError('Incorrect Payment PIN');
@@ -702,6 +841,21 @@ export const SmartwatchSimulator: React.FC<Props> = ({
         >
           <Palette className="w-3.5 h-3.5 text-emerald-400" />
           <span>Wallpaper</span>
+        </button>
+
+        {/* ⚙️ Settings Button to access Settings List on Smartwatch Screen */}
+        <button
+          type="button"
+          onClick={() => setIsWatchSettingsOpen(!isWatchSettingsOpen)}
+          className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer border ${
+            isWatchSettingsOpen
+              ? 'bg-emerald-600 text-white border-emerald-400 shadow-md shadow-emerald-950'
+              : 'text-slate-200 hover:text-white bg-slate-950/80 hover:bg-slate-900 border border-slate-700/80 hover:border-emerald-500/60'
+          }`}
+          title="Access Settings List on Smartwatch Screen (⚙️)"
+        >
+          <span>⚙️</span>
+          <span>Watch Settings</span>
         </button>
       </div>
 
@@ -843,33 +997,53 @@ export const SmartwatchSimulator: React.FC<Props> = ({
           } flex flex-col items-center justify-center overflow-hidden transition-all duration-300 ring-2 ring-emerald-500/20`}
         >
           {/* Hardware Rotary Bezel / Digital Crown Indicator with Live Internet Telemetry */}
-          <div className="absolute top-2.5 flex items-center justify-between w-full px-6 text-[10px] text-slate-400 font-mono">
-            <span className="flex items-center gap-1 text-emerald-400">
+          <div
+            className={`absolute z-20 flex items-center justify-between font-mono ${
+              platform === 'wear_os'
+                ? 'top-3.5 px-8 max-w-[200px] inset-x-0 mx-auto text-[8.5px]'
+                : 'top-2.5 px-5 w-full text-[10px]'
+            } text-slate-400`}
+          >
+            <span className="flex items-center gap-1 text-emerald-400 font-bold">
               <Zap className="w-3 h-3 animate-pulse" /> NGN
             </span>
-            <span className="text-slate-400">01:15 PM</span>
+            <span className="text-slate-200 font-bold tracking-tight text-[11px]">{deviceTime}</span>
             
-            {/* Interactive Live Internet Status Badge on Watch Bezel */}
-            <button
-              type="button"
-              onClick={handleRefreshInternet}
-              className="flex items-center gap-1 text-slate-300 hover:text-white transition-colors cursor-pointer group"
-              title={`Internet Access: ${internetStatus.isOnline ? 'ONLINE' : 'OFFLINE'} • Latency: ${internetStatus.latencyMs}ms • Tap to ping cloud`}
-            >
-              {isTestingInternet ? (
-                <Loader2 className="w-3 h-3 text-cyan-400 animate-spin" />
-              ) : internetStatus.isOnline ? (
-                <span className="flex items-center gap-1 text-emerald-400">
-                  <Wifi className="w-3 h-3" />
-                  <span className="text-[9px] font-bold">{internetStatus.latencyMs}ms</span>
-                </span>
-              ) : (
-                <span className="flex items-center gap-1 text-red-400">
-                  <WifiOff className="w-3 h-3" />
-                  <span className="text-[9px] font-bold">Offline</span>
-                </span>
-              )}
-            </button>
+            <div className="flex items-center gap-1.5">
+              {/* Interactive Live Internet Status Badge on Watch Bezel */}
+              <button
+                type="button"
+                onClick={handleRefreshInternet}
+                className="flex items-center gap-0.5 text-slate-300 hover:text-white transition-colors cursor-pointer group"
+                title={`Internet Access: ${internetStatus.isOnline ? 'ONLINE' : 'OFFLINE'} • Latency: ${internetStatus.latencyMs}ms • Tap to ping cloud`}
+              >
+                {isTestingInternet ? (
+                  <Loader2 className="w-3 h-3 text-cyan-400 animate-spin" />
+                ) : internetStatus.isOnline ? (
+                  <span className="flex items-center gap-0.5 text-emerald-400">
+                    <Wifi className="w-3 h-3" />
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-0.5 text-red-400">
+                    <WifiOff className="w-3 h-3" />
+                  </span>
+                )}
+              </button>
+
+              {/* AT THE TOP RIGHT CORNER OF THE SMART WATCH SCREEN: ICON "⚙️" SETTING */}
+              <button
+                type="button"
+                onClick={() => setIsWatchSettingsOpen(!isWatchSettingsOpen)}
+                className={`flex items-center justify-center w-6 h-6 rounded-full border text-white shadow-md transition-all cursor-pointer hover:scale-110 active:scale-95 group ring-1 ${
+                  isWatchSettingsOpen
+                    ? 'bg-emerald-500 border-white ring-emerald-300'
+                    : 'bg-slate-900/95 hover:bg-emerald-600 border-slate-600/90 hover:border-emerald-400 ring-emerald-500/30'
+                }`}
+                title="⚙️ Settings - Tap to access settings list on smart meter watch"
+              >
+                <span className="text-xs select-none leading-none group-hover:rotate-45 transition-transform inline-block">⚙️</span>
+              </button>
+            </div>
           </div>
 
           {/* Active Wallpaper Background Image Layer */}
@@ -890,14 +1064,33 @@ export const SmartwatchSimulator: React.FC<Props> = ({
 
           {/* Interactive Screen Area */}
           <div
-            className={`relative z-10 w-full h-full flex flex-col items-center justify-center p-3 text-center ${
-              platform === 'wear_os' ? 'rounded-full' : 'rounded-[30px]'
+            className={`relative z-10 w-full h-full flex flex-col items-center justify-center text-center transition-all ${
+              platform === 'wear_os'
+                ? 'rounded-full pt-8 pb-9 px-7 max-w-[236px] mx-auto'
+                : 'rounded-[30px] p-3 w-full'
             }`}
           >
-            {/* Header Brand */}
-            <div className="text-[10px] font-bold tracking-widest text-emerald-400 uppercase flex items-center gap-1">
-              <ShieldCheck className="w-3 h-3" />
-              KudiPulse Pay
+            {/* Header Brand & Top-Right Screen Settings Access */}
+            <div className="flex items-center justify-between w-full max-w-[200px] px-1 mb-1">
+              <div className="text-[10px] font-bold tracking-widest text-emerald-400 uppercase flex items-center gap-1">
+                <ShieldCheck className="w-3 h-3" />
+                <span>KudiPulse</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsWatchSettingsOpen(!isWatchSettingsOpen)}
+                className={`flex items-center gap-1 px-1.5 py-0.5 rounded-full border text-white transition-all cursor-pointer shadow-sm group active:scale-95 ${
+                  isWatchSettingsOpen
+                    ? 'bg-emerald-600 border-white text-white'
+                    : 'bg-slate-950/90 hover:bg-slate-800 border-slate-700/80 hover:border-emerald-400/80'
+                }`}
+                title="⚙️ Settings - Tap to access settings list on smart meter watch"
+              >
+                <span className="text-[11px] leading-none group-hover:rotate-45 transition-transform inline-block">⚙️</span>
+                <span className="text-[8px] font-mono font-bold text-slate-300 group-hover:text-emerald-300">
+                  Settings
+                </span>
+              </button>
             </div>
 
             {/* Account Balance Widget on Smart Watch Screen */}
@@ -990,9 +1183,9 @@ export const SmartwatchSimulator: React.FC<Props> = ({
             <div className="flex items-center gap-1 bg-slate-900/90 border border-slate-700 p-0.5 rounded-full my-0.5">
               <button
                 onClick={() => setMode('bluetooth')}
-                className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-medium transition-all ${
+                className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-medium transition-all cursor-pointer ${
                   mode === 'bluetooth'
-                    ? 'bg-emerald-600 text-white'
+                    ? 'bg-emerald-600 text-white shadow-xs font-bold'
                     : 'text-slate-400 hover:text-slate-200'
                 }`}
               >
@@ -1001,14 +1194,25 @@ export const SmartwatchSimulator: React.FC<Props> = ({
               </button>
               <button
                 onClick={() => setMode('dynamic_qr')}
-                className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-medium transition-all ${
+                className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-medium transition-all cursor-pointer ${
                   mode === 'dynamic_qr'
-                    ? 'bg-emerald-600 text-white'
+                    ? 'bg-emerald-600 text-white shadow-xs font-bold'
                     : 'text-slate-400 hover:text-slate-200'
                 }`}
               >
                 <QrCode className="w-2.5 h-2.5" />
                 NIBSS QR
+              </button>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsNqrInfoOpen(true);
+                }}
+                className="w-4 h-4 rounded-full bg-slate-800 hover:bg-slate-700 text-cyan-400 flex items-center justify-center text-[8.5px] font-bold cursor-pointer transition-colors"
+                title="What is NIBSS QR? Click for tactical briefing"
+              >
+                <Info className="w-2.5 h-2.5" />
               </button>
             </div>
 
@@ -1020,7 +1224,7 @@ export const SmartwatchSimulator: React.FC<Props> = ({
                 className={`w-full py-1.5 px-3 rounded-xl text-xs font-extrabold uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all shadow-lg ${
                   isTransmitting || isProcessing
                     ? 'bg-emerald-800/80 text-emerald-200 cursor-wait'
-                    : 'bg-gradient-to-r from-emerald-500 to-teal-500 text-slate-950 hover:brightness-110 active:scale-95 shadow-emerald-500/20'
+                    : 'bg-gradient-to-r from-emerald-500 to-teal-500 text-slate-950 hover:brightness-110 active:scale-95 shadow-emerald-500/20 cursor-pointer'
                 }`}
               >
                 {isTransmitting ? (
@@ -1032,6 +1236,11 @@ export const SmartwatchSimulator: React.FC<Props> = ({
                   <>
                     <RotateCw className="w-3.5 h-3.5 animate-spin text-emerald-300" />
                     <span>Processing</span>
+                  </>
+                ) : mode === 'dynamic_qr' ? (
+                  <>
+                    <span>Display NQR</span>
+                    <QrCode className="w-3.5 h-3.5 text-slate-950" />
                   </>
                 ) : (
                   <>
@@ -1446,44 +1655,689 @@ export const SmartwatchSimulator: React.FC<Props> = ({
               </div>
             )}
 
-            {/* SMARTWATCH WRIST LOCK SCREEN GATE: Mandates 6-Digit Password or Biometric Scan before watch screen opens */}
-            {isWatchLocked && (
+            {/* SMARTWATCH DYNAMIC NIBSS NQR CODE MODAL OVERLAY */}
+            {isNqrModalActive && (
               <div
-                className={`absolute inset-0 z-40 bg-slate-950/98 backdrop-blur-xl flex flex-col items-center justify-between p-3 select-none animate-in fade-in duration-200 ${
+                className={`absolute inset-0 z-30 bg-slate-950/96 backdrop-blur-md flex flex-col items-center justify-between p-2.5 animate-in fade-in zoom-in-95 duration-150 ${
                   platform === 'wear_os' ? 'rounded-full' : 'rounded-[34px]'
                 }`}
               >
-                {/* Tactical Top Bar */}
+                {/* Header with Cancel/Back and Info */}
                 <div className="w-full flex items-center justify-between pt-1 px-3">
+                  <button
+                    type="button"
+                    onClick={() => setIsNqrModalActive(false)}
+                    className="p-1 rounded-full bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-white transition-colors cursor-pointer"
+                    title="Close QR"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                  <span className="text-[9.5px] font-bold text-emerald-400 flex items-center gap-1 font-mono uppercase tracking-wider">
+                    <QrCode className="w-2.5 h-2.5 text-emerald-400" />
+                    NIBSS NQR
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setIsNqrInfoOpen(true)}
+                    className="p-1 rounded-full bg-slate-900 hover:bg-slate-800 text-cyan-400 hover:text-white transition-colors cursor-pointer"
+                    title="What is NIBSS QR?"
+                  >
+                    <Info className="w-2.5 h-2.5" />
+                  </button>
+                </div>
+
+                {/* Dynamic QR Code Canvas on Watch Screen */}
+                <div className="flex flex-col items-center justify-center my-auto w-full px-2 space-y-1">
+                  <div className="text-[8.5px] text-slate-300 font-sans font-semibold truncate max-w-[170px]">
+                    {activeRecipient.name}
+                  </div>
+                  <div className="text-base font-black text-white font-mono tracking-tight text-emerald-400">
+                    ₦{parsedAmount.toLocaleString('en-NG')}
+                  </div>
+
+                  {/* High-Contrast Crisp NIBSS NQR SVG Container */}
+                  <div className="relative p-2 bg-white rounded-xl shadow-lg shadow-emerald-500/20 border-2 border-emerald-400">
+                    <svg viewBox="0 0 100 100" className="w-24 h-24" shapeRendering="crispEdges">
+                      {/* Top-left finder */}
+                      <rect x="0" y="0" width="28" height="28" fill="#022c22" rx="4" />
+                      <rect x="4" y="4" width="20" height="20" fill="#ffffff" rx="2" />
+                      <rect x="8" y="8" width="12" height="12" fill="#059669" rx="1" />
+
+                      {/* Top-right finder */}
+                      <rect x="72" y="0" width="28" height="28" fill="#022c22" rx="4" />
+                      <rect x="76" y="4" width="20" height="20" fill="#ffffff" rx="2" />
+                      <rect x="80" y="8" width="12" height="12" fill="#059669" rx="1" />
+
+                      {/* Bottom-left finder */}
+                      <rect x="0" y="72" width="28" height="28" fill="#022c22" rx="4" />
+                      <rect x="4" y="76" width="20" height="20" fill="#ffffff" rx="2" />
+                      <rect x="8" y="80" width="12" height="12" fill="#059669" rx="1" />
+
+                      {/* Dynamic EMVCo Data Modules */}
+                      <rect x="36" y="4" width="8" height="4" fill="#0f172a" />
+                      <rect x="48" y="4" width="4" height="8" fill="#059669" />
+                      <rect x="60" y="8" width="8" height="4" fill="#0f172a" />
+                      <rect x="32" y="16" width="4" height="8" fill="#0f172a" />
+                      <rect x="40" y="12" width="12" height="4" fill="#059669" />
+                      <rect x="56" y="16" width="4" height="12" fill="#0f172a" />
+                      <rect x="36" y="24" width="16" height="4" fill="#059669" />
+
+                      {/* Timing bars */}
+                      <rect x="28" y="12" width="4" height="4" fill="#059669" />
+                      <rect x="12" y="28" width="4" height="4" fill="#059669" />
+                      <rect x="12" y="36" width="4" height="4" fill="#0f172a" />
+                      <rect x="12" y="44" width="4" height="4" fill="#059669" />
+                      <rect x="12" y="52" width="4" height="4" fill="#0f172a" />
+                      <rect x="12" y="60" width="4" height="4" fill="#059669" />
+
+                      {/* Center NIBSS Lock Emblem Badge */}
+                      <rect x="38" y="38" width="24" height="24" fill="#022c22" rx="5" />
+                      <circle cx="50" cy="50" r="8" fill="#10b981" />
+                      <rect x="47" y="48" width="6" height="6" fill="#ffffff" rx="1" />
+                      <path d="M48 48 V45 A2 2 0 0 1 52 45 V48" stroke="#ffffff" strokeWidth="1.5" fill="none" />
+
+                      {/* Bottom data modules */}
+                      <rect x="36" y="68" width="8" height="4" fill="#0f172a" />
+                      <rect x="48" y="72" width="12" height="4" fill="#059669" />
+                      <rect x="64" y="68" width="4" height="12" fill="#0f172a" />
+                      <rect x="72" y="36" width="12" height="4" fill="#059669" />
+                      <rect x="88" y="44" width="8" height="8" fill="#0f172a" />
+                      <rect x="76" y="56" width="16" height="4" fill="#059669" />
+                      <rect x="32" y="84" width="20" height="4" fill="#0f172a" />
+                      <rect x="56" y="80" width="8" height="8" fill="#059669" />
+                      <rect x="68" y="84" width="12" height="4" fill="#0f172a" />
+                      <rect x="84" y="76" width="12" height="4" fill="#059669" />
+                    </svg>
+
+                    {/* Animated Scanning Beam Laser */}
+                    <div className="absolute inset-x-2 top-2 h-0.5 bg-gradient-to-r from-transparent via-emerald-400 to-transparent animate-[bounce_2s_infinite] shadow-sm shadow-emerald-400"></div>
+                  </div>
+
+                  {/* Expiration Counter & Protocol Badge */}
+                  <div className="flex items-center justify-between w-full max-w-[170px] text-[7.5px] font-mono text-slate-400 pt-0.5">
+                    <span className="flex items-center gap-1 text-emerald-400 font-bold">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                      EMVCo NQR
+                    </span>
+                    <span className="text-amber-400 font-bold">
+                      Expires in {nqrCountdown}s
+                    </span>
+                  </div>
+                </div>
+
+                {/* Simulate Merchant POS Camera Scan Trigger */}
+                <div className="w-full max-w-[180px] pb-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsNqrModalActive(false);
+                      executeSignedPayment();
+                    }}
+                    className="w-full py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center justify-center gap-1.5 bg-gradient-to-r from-emerald-500 to-teal-500 text-slate-950 hover:brightness-110 shadow-md shadow-emerald-500/30 cursor-pointer active:scale-95 transition-all"
+                  >
+                    <Camera className="w-3 h-3 text-slate-950" />
+                    Merchant Scans QR
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* ============================================================ */}
+            {/* SMARTWATCH IN-SCREEN FULL SETTINGS LIST HUD                  */}
+            {/* ============================================================ */}
+            {isWatchSettingsOpen && (
+              <div
+                className={`absolute inset-0 z-50 bg-slate-950/98 backdrop-blur-2xl flex flex-col items-center justify-between select-none animate-in fade-in zoom-in-95 duration-200 overflow-hidden text-slate-200 ${
+                  platform === 'wear_os' ? 'rounded-full pt-8 pb-8 px-6' : 'rounded-[34px] pt-3 pb-3 px-3'
+                } ${watchHapticTriggered ? 'animate-[bounce_0.2s_ease-in-out_2]' : ''}`}
+              >
+                {/* 1. STICKY TOP HUD HEADER */}
+                <div className={`w-full flex items-center justify-between pb-1.5 border-b border-slate-800/80 shrink-0 ${platform === 'wear_os' ? 'px-2 max-w-[200px] mx-auto' : 'px-2'}`}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsWatchSettingsOpen(false);
+                      setIsWatchEditingPin(false);
+                    }}
+                    className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-slate-900 hover:bg-slate-800 text-emerald-400 border border-slate-700/80 text-[9px] font-mono font-semibold transition-all cursor-pointer active:scale-95"
+                    title="Back to Watch Meter"
+                  >
+                    <ArrowLeft className="w-2.5 h-2.5" />
+                    <span>Back</span>
+                  </button>
+
+                  <div className="flex items-center gap-1 font-mono text-[10px] font-bold text-white tracking-wider">
+                    <span className="text-[11px]">⚙️</span>
+                    <span className="uppercase text-emerald-400">Settings</span>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsWatchSettingsOpen(false);
+                      onOpenSettings?.();
+                    }}
+                    className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-slate-900 hover:bg-emerald-950/80 text-slate-300 hover:text-emerald-300 border border-slate-700/80 text-[8.5px] font-mono transition-all cursor-pointer"
+                    title="Open Full Console Settings on Phone / Web"
+                  >
+                    <span>Full</span>
+                    <ChevronRight className="w-2.5 h-2.5" />
+                  </button>
+                </div>
+
+                {/* 2. FAST CATEGORY FILTER PILLS */}
+                <div className={`w-full flex items-center gap-1 overflow-x-auto no-scrollbar py-1 shrink-0 ${platform === 'wear_os' ? 'max-w-[196px] mx-auto px-1' : 'px-1'}`}>
+                  {(['all', 'security', 'threshold', 'banks', 'hardware'] as const).map((filter) => (
+                    <button
+                      key={filter}
+                      type="button"
+                      onClick={() => setWatchSettingsFilter(filter)}
+                      className={`px-2 py-0.5 rounded-full text-[8px] font-mono uppercase font-bold shrink-0 transition-all ${
+                        watchSettingsFilter === filter
+                          ? 'bg-emerald-500 text-slate-950 shadow-sm'
+                          : 'bg-slate-900/90 text-slate-400 hover:text-white border border-slate-800'
+                      }`}
+                    >
+                      {filter}
+                    </button>
+                  ))}
+                </div>
+
+                {/* 3. SCROLLABLE SETTINGS LIST BODY */}
+                <div className={`w-full flex-1 overflow-y-auto no-scrollbar space-y-2 text-left ${platform === 'wear_os' ? 'max-w-[204px] mx-auto px-1 pb-8' : 'px-1'}`}>
+                  {/* --- CATEGORY: 4-DIGIT PAYMENT PIN --- */}
+                  {(watchSettingsFilter === 'all' || watchSettingsFilter === 'security') && (
+                    <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-2 space-y-1.5 shadow-sm">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-1 text-[9.5px] font-bold text-white">
+                          <KeyRound className="w-3 h-3 text-emerald-400" />
+                          <span>4-Digit Payment PIN</span>
+                        </div>
+                        <span className={`text-[8px] font-mono px-1.5 py-0.2 rounded-full font-bold ${
+                          transactionPin ? 'bg-emerald-950 text-emerald-400 border border-emerald-800/60' : 'bg-amber-950 text-amber-400 border border-amber-800/60'
+                        }`}>
+                          {transactionPin ? 'Active' : 'Unset'}
+                        </span>
+                      </div>
+
+                      <p className="text-[8px] text-slate-400 leading-tight">
+                        Required for offline POS & contactless debit authorization above regulatory threshold.
+                      </p>
+
+                      {watchPinSavedMsg && (
+                        <div className="text-[8px] font-mono text-emerald-300 bg-emerald-950/70 border border-emerald-800/60 rounded px-1.5 py-0.5 text-center flex items-center justify-center gap-1">
+                          <CheckCircle2 className="w-2.5 h-2.5 text-emerald-400" />
+                          <span>{watchPinSavedMsg}</span>
+                        </div>
+                      )}
+
+                      {!isWatchEditingPin ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsWatchEditingPin(true);
+                            setWatchNewPinInput('');
+                          }}
+                          className="w-full py-1 rounded-lg bg-emerald-950/70 hover:bg-emerald-900/80 border border-emerald-700/60 text-emerald-300 text-[9px] font-mono font-bold flex items-center justify-center gap-1 transition-all cursor-pointer"
+                        >
+                          <Edit3 className="w-2.5 h-2.5" />
+                          <span>{transactionPin ? 'Change PIN on Watch' : 'Setup 4-Digit PIN'}</span>
+                        </button>
+                      ) : (
+                        <div className="bg-slate-950 p-1.5 rounded-lg border border-slate-800 space-y-1.5">
+                          <div className="flex items-center justify-between text-[8px] font-mono text-slate-400">
+                            <span>Enter 4 Digits:</span>
+                            <div className="flex gap-1">
+                              {[0, 1, 2, 3].map((idx) => (
+                                <div
+                                  key={idx}
+                                  className={`w-2 h-2 rounded-full border ${
+                                    watchNewPinInput.length > idx
+                                      ? 'bg-emerald-400 border-emerald-300'
+                                      : 'bg-slate-800 border-slate-700'
+                                  }`}
+                                />
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* Mini numeric pad for watch */}
+                          <div className="grid grid-cols-3 gap-1">
+                            {['1', '2', '3', '4', '5', '6', '7', '8', '9', 'C', '0', '✓'].map((key) => (
+                              <button
+                                key={key}
+                                type="button"
+                                onClick={() => {
+                                  if (key === 'C') {
+                                    setWatchNewPinInput('');
+                                  } else if (key === '✓') {
+                                    if (watchNewPinInput.length === 4) {
+                                      handleSaveWatchPin(watchNewPinInput);
+                                    }
+                                  } else {
+                                    if (watchNewPinInput.length < 4) {
+                                      const next = watchNewPinInput + key;
+                                      setWatchNewPinInput(next);
+                                      if (next.length === 4) {
+                                        handleSaveWatchPin(next);
+                                      }
+                                    }
+                                  }
+                                }}
+                                className={`py-1 rounded text-[9px] font-mono font-bold transition-all ${
+                                  key === '✓'
+                                    ? 'bg-emerald-600 text-white hover:bg-emerald-500'
+                                    : key === 'C'
+                                    ? 'bg-red-950/80 text-red-300 hover:bg-red-900'
+                                    : 'bg-slate-900 text-slate-200 hover:bg-slate-800 border border-slate-800'
+                                }`}
+                              >
+                                {key}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* --- CATEGORY: CBN REGULATORY THRESHOLD --- */}
+                  {(watchSettingsFilter === 'all' || watchSettingsFilter === 'threshold') && (
+                    <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-2 space-y-1.5 shadow-sm">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-1 text-[9.5px] font-bold text-white">
+                          <Sliders className="w-3 h-3 text-cyan-400" />
+                          <span>CBN PIN Threshold</span>
+                        </div>
+                        <span className="text-[8px] font-mono text-cyan-300 bg-cyan-950 px-1.5 py-0.2 rounded-full border border-cyan-800/60 font-bold">
+                          {pinRequiredThreshold === 0 ? 'Always Req' : `₦${pinRequiredThreshold.toLocaleString('en-NG')}`}
+                        </span>
+                      </div>
+
+                      <p className="text-[8px] text-slate-400 leading-tight">
+                        CBN PSV2020 contactless limits. Amounts above this trigger wrist 4-digit PIN challenge.
+                      </p>
+
+                      <div className="grid grid-cols-3 gap-1 pt-0.5">
+                        {[
+                          { label: '₦5k', value: 5000 },
+                          { label: '₦15k', value: 15000 },
+                          { label: '₦25k', value: 25000 },
+                          { label: '₦50k', value: 50000 },
+                          { label: '₦100k', value: 100000 },
+                          { label: 'Always', value: 0 },
+                        ].map((item) => (
+                          <button
+                            key={item.label}
+                            type="button"
+                            onClick={() => {
+                              onChangePinRequiredThreshold?.(item.value);
+                              setWatchHapticTriggered(true);
+                              setTimeout(() => setWatchHapticTriggered(false), 300);
+                            }}
+                            className={`py-0.8 rounded text-[8px] font-mono font-bold transition-all border ${
+                              pinRequiredThreshold === item.value
+                                ? 'bg-cyan-500 text-slate-950 border-cyan-300 shadow-sm'
+                                : 'bg-slate-950 text-slate-300 border-slate-800 hover:border-slate-700'
+                            }`}
+                          >
+                            {item.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* --- CATEGORY: LINKED NIGERIAN BANKS --- */}
+                  {(watchSettingsFilter === 'all' || watchSettingsFilter === 'banks') && (
+                    <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-2 space-y-1.5 shadow-sm">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-1 text-[9.5px] font-bold text-white">
+                          <Landmark className="w-3 h-3 text-emerald-400" />
+                          <span>Linked Banks (Debit)</span>
+                        </div>
+                        <span className="text-[8px] font-mono text-slate-400">
+                          {linkedBanks.length || 5} Linked
+                        </span>
+                      </div>
+
+                      <div className="space-y-1">
+                        {linkedBanks.map((bank) => {
+                          const isActive = activeBank?.id === bank.id;
+                          return (
+                            <div
+                              key={bank.id}
+                              onClick={() => {
+                                onSwitchActiveBank?.(bank.id);
+                                setWatchHapticTriggered(true);
+                                setTimeout(() => setWatchHapticTriggered(false), 300);
+                              }}
+                              className={`p-1.5 rounded-lg border transition-all cursor-pointer flex items-center justify-between ${
+                                isActive
+                                  ? 'bg-emerald-950/80 border-emerald-500/80 shadow-sm'
+                                  : 'bg-slate-950/70 border-slate-800 hover:border-slate-700'
+                              }`}
+                            >
+                              <div className="min-w-0 pr-1">
+                                <div className="text-[8.5px] font-bold text-white truncate flex items-center gap-1">
+                                  <span>{bank.bankName}</span>
+                                  {isActive && <CheckCircle2 className="w-2.5 h-2.5 text-emerald-400 shrink-0" />}
+                                </div>
+                                <div className="text-[7.5px] font-mono text-slate-400">
+                                  •••• {bank.accountNumber.slice(-4)}
+                                </div>
+                              </div>
+                              <div className="text-right shrink-0">
+                                <div className="text-[8.5px] font-mono font-bold text-emerald-400">
+                                  ₦{bank.balance.toLocaleString('en-NG')}
+                                </div>
+                                <span className={`text-[7px] uppercase font-mono px-1 rounded ${
+                                  isActive ? 'bg-emerald-500 text-slate-950 font-bold' : 'text-slate-500'
+                                }`}>
+                                  {isActive ? 'Active' : 'Tap'}
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* --- CATEGORY: TRANSMISSION MODES --- */}
+                  {(watchSettingsFilter === 'all' || watchSettingsFilter === 'hardware') && (
+                    <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-2 space-y-1.5 shadow-sm">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-1 text-[9.5px] font-bold text-white">
+                          <Radio className="w-3 h-3 text-teal-400" />
+                          <span>Transmission Protocol</span>
+                        </div>
+                        <span className="text-[8px] font-mono text-teal-300 uppercase font-bold">
+                          {mode}
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-1">
+                        {[
+                          { id: 'bluetooth', label: 'BLE Mesh', icon: '📡' },
+                          { id: 'nfc', label: 'NFC Tap', icon: '⚡' },
+                          { id: 'soundwave', label: 'Sound Wave', icon: '🔊' },
+                          { id: 'qr', label: 'NIBSS QR', icon: '📱' },
+                        ].map((m) => (
+                          <button
+                            key={m.id}
+                            type="button"
+                            onClick={() => {
+                              setMode(m.id as PaymentMode);
+                              setWatchHapticTriggered(true);
+                              setTimeout(() => setWatchHapticTriggered(false), 300);
+                            }}
+                            className={`py-1 px-1.5 rounded-lg text-[8px] font-mono font-bold flex items-center justify-center gap-1 border transition-all ${
+                              mode === m.id
+                                ? 'bg-teal-500 text-slate-950 border-teal-300 shadow-sm'
+                                : 'bg-slate-950 text-slate-300 border-slate-800 hover:border-slate-700'
+                            }`}
+                          >
+                            <span>{m.icon}</span>
+                            <span>{m.label}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* --- CATEGORY: HAPTICS & SOUND FEEDBACK --- */}
+                  {(watchSettingsFilter === 'all' || watchSettingsFilter === 'hardware') && (
+                    <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-2 space-y-1.5 shadow-sm">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-1 text-[9.5px] font-bold text-white">
+                          <Activity className="w-3 h-3 text-amber-400" />
+                          <span>Haptics & Audio Chimes</span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between bg-slate-950 p-1.5 rounded-lg border border-slate-800">
+                        <span className="text-[8.5px] font-medium text-slate-300">Wrist Haptic Pulses</span>
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={handleTestWatchHaptic}
+                            className="px-1.5 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[7.5px] font-mono"
+                          >
+                            Test Buzz
+                          </button>
+                          <button
+                            type="button"
+                            onClick={onToggleHaptic}
+                            className={`px-1.5 py-0.5 rounded text-[8px] font-mono font-bold uppercase transition-all ${
+                              hapticEnabled ? 'bg-emerald-500 text-slate-950' : 'bg-slate-800 text-slate-500'
+                            }`}
+                          >
+                            {hapticEnabled ? 'ON' : 'OFF'}
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between bg-slate-950 p-1.5 rounded-lg border border-slate-800">
+                        <span className="text-[8.5px] font-medium text-slate-300">Sound Waves & Chimes</span>
+                        <button
+                          type="button"
+                          onClick={onToggleSound}
+                          className={`px-1.5 py-0.5 rounded text-[8px] font-mono font-bold uppercase transition-all ${
+                            soundEnabled ? 'bg-emerald-500 text-slate-950' : 'bg-slate-800 text-slate-500'
+                          }`}
+                        >
+                          {soundEnabled ? 'ON' : 'OFF'}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* --- CATEGORY: DEVICE TIME & NTP SYNC --- */}
+                  {(watchSettingsFilter === 'all' || watchSettingsFilter === 'hardware') && (
+                    <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-2 space-y-1.5 shadow-sm">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-1 text-[9.5px] font-bold text-white">
+                          <Watch className="w-3 h-3 text-cyan-400" />
+                          <span>Device Clock & Sync</span>
+                        </div>
+                        <span className="text-[8px] font-mono text-cyan-400 font-bold">{deviceTime}</span>
+                      </div>
+
+                      <p className="text-[8px] text-slate-400 leading-tight">
+                        Follows your physical device time in real-time. Synchronized with West Africa Time (WAT / GMT+1).
+                      </p>
+
+                      {watchTimeSyncMsg && (
+                        <div className="text-[7.5px] font-mono text-cyan-300 bg-cyan-950/70 border border-cyan-800/60 rounded px-1.5 py-0.5 text-center">
+                          {watchTimeSyncMsg}
+                        </div>
+                      )}
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDeviceTime(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+                          setWatchTimeSyncMsg('NTP Stratum-1 Synced');
+                          setWatchHapticTriggered(true);
+                          setTimeout(() => setWatchHapticTriggered(false), 300);
+                          setTimeout(() => setWatchTimeSyncMsg(null), 1500);
+                        }}
+                        className="w-full py-1 rounded-lg bg-slate-950 hover:bg-slate-800 border border-slate-800 text-cyan-300 text-[8.5px] font-mono font-bold flex items-center justify-center gap-1 transition-all"
+                      >
+                        <RefreshCw className="w-2.5 h-2.5" />
+                        <span>Force Sync With Device Time</span>
+                      </button>
+                    </div>
+                  )}
+
+                  {/* --- CATEGORY: DIALECT & LOCALIZATION --- */}
+                  {(watchSettingsFilter === 'all' || watchSettingsFilter === 'hardware') && (
+                    <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-2 space-y-1.5 shadow-sm">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-1 text-[9.5px] font-bold text-white">
+                          <Globe2 className="w-3 h-3 text-purple-400" />
+                          <span>Language & Dialect</span>
+                        </div>
+                        <span className="text-[8px] font-mono text-purple-300 font-bold">
+                          {currentLanguage?.name?.split(' ')[0] || 'English'}
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-1">
+                        {ALL_LANGUAGES.slice(0, 6).map((lang) => {
+                          const isSel = currentLanguage?.code === lang.code;
+                          return (
+                            <button
+                              key={lang.code}
+                              type="button"
+                              onClick={() => {
+                                onSelectLanguage?.(lang);
+                                setWatchHapticTriggered(true);
+                                setTimeout(() => setWatchHapticTriggered(false), 300);
+                              }}
+                              className={`py-0.8 px-1 rounded text-[7.5px] font-mono font-bold truncate transition-all border ${
+                                isSel
+                                  ? 'bg-purple-600 text-white border-purple-300'
+                                  : 'bg-slate-950 text-slate-300 border-slate-800 hover:border-slate-700'
+                              }`}
+                            >
+                              {lang.flag} {lang.name.split(' ')[0]}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* --- CATEGORY: OFFICER & METER INTEL --- */}
+                  {(watchSettingsFilter === 'all' || watchSettingsFilter === 'security') && (
+                    <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-2 space-y-1 shadow-sm">
+                      <div className="flex items-center justify-between text-[9px] font-bold text-white">
+                        <span className="flex items-center gap-1">
+                          <UserCheck className="w-3 h-3 text-emerald-400" />
+                          Officer Profile
+                        </span>
+                        <span className="text-[7.5px] font-mono text-emerald-400 bg-emerald-950 px-1 rounded">
+                          Tier 3 Verified
+                        </span>
+                      </div>
+                      <div className="text-[8px] text-slate-300 font-mono space-y-0.5 bg-slate-950 p-1.5 rounded-lg border border-slate-800">
+                        <div>Name: Col. Osagiede Joshua</div>
+                        <div>BVN: 22194829104 (CBN Cleared)</div>
+                        <div>NIN: 84910294819 (NIMC Verified)</div>
+                        <div>Role: Tactical Field Operator</div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* --- CATEGORY: SYSTEM HARDWARE ACTIONS --- */}
+                  <div className="space-y-1 pt-1 pb-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsWatchSettingsOpen(false);
+                        setIsWatchLocked(true);
+                        setWatchEnteredPasscode('');
+                        setWatchPasscodeError(null);
+                      }}
+                      className="w-full py-1.5 rounded-lg bg-amber-950/80 hover:bg-amber-900 border border-amber-700/60 text-amber-300 text-[9px] font-mono font-bold flex items-center justify-center gap-1.5 cursor-pointer shadow-sm transition-all"
+                    >
+                      <Lock className="w-3 h-3 text-amber-400" />
+                      <span>Lock Watch Screen Now</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsWatchSettingsOpen(false);
+                        setIsWallpaperSelectorOpen(true);
+                      }}
+                      className="w-full py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700/80 text-slate-200 text-[9px] font-mono font-bold flex items-center justify-center gap-1.5 cursor-pointer transition-all"
+                    >
+                      <Palette className="w-3 h-3 text-emerald-400" />
+                      <span>Select Tactical Wallpaper</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsWatchSettingsOpen(false);
+                        onOpenSettings?.();
+                      }}
+                      className="w-full py-1.5 rounded-lg bg-slate-900 hover:bg-emerald-950/80 border border-slate-800 hover:border-emerald-500/60 text-slate-300 text-[9px] font-mono font-bold flex items-center justify-center gap-1.5 cursor-pointer transition-all"
+                    >
+                      <Sliders className="w-3 h-3 text-cyan-400" />
+                      <span>Launch Full Settings on Phone</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setIsWatchSettingsOpen(false)}
+                      className="w-full py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-slate-950 text-[9px] font-black uppercase tracking-wider flex items-center justify-center gap-1 cursor-pointer shadow-md shadow-emerald-950 transition-all"
+                    >
+                      <Check className="w-3 h-3 stroke-[3]" />
+                      <span>Done • Back to Meter</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* SMARTWATCH WRIST LOCK SCREEN GATE: Mandates 6-Digit Password or Biometric Scan before watch screen opens */}
+            {isWatchLocked && (
+              <div
+                className={`absolute inset-0 z-40 bg-slate-950/98 backdrop-blur-xl flex flex-col items-center justify-between select-none animate-in fade-in duration-200 ${
+                  platform === 'wear_os' ? 'rounded-full pt-8 pb-8 px-6' : 'rounded-[34px] p-3'
+                }`}
+              >
+                {/* Tactical Top Bar */}
+                <div className={`w-full flex items-center justify-between pt-1 ${platform === 'wear_os' ? 'max-w-[200px] px-2 mx-auto' : 'px-3'}`}>
                   <span className="text-[9px] font-mono text-emerald-400 font-bold flex items-center gap-1">
                     <ShieldCheck className="w-3 h-3 text-emerald-400" />
                     Wrist Security
                   </span>
-                  <div className="flex items-center gap-1 bg-slate-900 p-0.5 rounded-full border border-slate-800 text-[8px] font-mono">
+                  <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-1 bg-slate-900 p-0.5 rounded-full border border-slate-800 text-[8px] font-mono">
+                      <button
+                        type="button"
+                        onClick={() => setWatchAuthMode('passcode')}
+                        className={`px-1.5 py-0.5 rounded-full transition-all ${
+                          watchAuthMode === 'passcode'
+                            ? 'bg-emerald-600 text-white font-bold'
+                            : 'text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        PIN
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setWatchAuthMode('biometric');
+                          triggerWatchBiometricScan();
+                        }}
+                        className={`px-1.5 py-0.5 rounded-full transition-all ${
+                          watchAuthMode === 'biometric'
+                            ? 'bg-cyan-600 text-white font-bold'
+                            : 'text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        BIO
+                      </button>
+                    </div>
+
+                    {/* Top Right Corner ⚙️ Settings Button */}
                     <button
                       type="button"
-                      onClick={() => setWatchAuthMode('passcode')}
-                      className={`px-1.5 py-0.5 rounded-full transition-all ${
-                        watchAuthMode === 'passcode'
-                          ? 'bg-emerald-600 text-white font-bold'
-                          : 'text-slate-400 hover:text-white'
+                      onClick={() => setIsWatchSettingsOpen(!isWatchSettingsOpen)}
+                      className={`flex items-center justify-center w-5 h-5 rounded-full border text-white text-[10px] transition-all cursor-pointer shadow-sm active:scale-95 ml-0.5 ${
+                        isWatchSettingsOpen
+                          ? 'bg-emerald-600 border-white ring-1 ring-emerald-300'
+                          : 'bg-slate-900 hover:bg-emerald-600 border-slate-700 hover:border-emerald-400'
                       }`}
+                      title="⚙️ Settings - Tap to access settings list on smart meter watch"
                     >
-                      PIN
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setWatchAuthMode('biometric');
-                        triggerWatchBiometricScan();
-                      }}
-                      className={`px-1.5 py-0.5 rounded-full transition-all ${
-                        watchAuthMode === 'biometric'
-                          ? 'bg-cyan-600 text-white font-bold'
-                          : 'text-slate-400 hover:text-white'
-                      }`}
-                    >
-                      BIO
+                      ⚙️
                     </button>
                   </div>
                 </div>
@@ -1731,6 +2585,88 @@ export const SmartwatchSimulator: React.FC<Props> = ({
                 );
               })}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================ */}
+      {/* TACTICAL NIBSS NQR INTEL & EXPLANATION MODAL                */}
+      {/* ============================================================ */}
+      {isNqrInfoOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-slate-900 border border-emerald-500/40 rounded-3xl p-5 max-w-md w-full shadow-2xl space-y-4 ring-1 ring-emerald-500/20">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <div className="flex items-center gap-2 text-emerald-400 font-mono font-bold text-sm">
+                <QrCode className="w-5 h-5 text-emerald-400" />
+                <span>NIBSS NQR Option — Tactical Debrief</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsNqrInfoOpen(false)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs text-slate-300">
+              <div className="p-3 rounded-xl bg-emerald-950/50 border border-emerald-800/60 space-y-1.5">
+                <div className="flex items-center gap-1.5 font-mono font-bold text-emerald-400 text-[11px] uppercase tracking-wider">
+                  <ShieldCheck className="w-3.5 h-3.5" />
+                  What is the NIBSS QR Option on the watch?
+                </div>
+                <p className="text-[11px] text-slate-300 leading-relaxed">
+                  <strong>NIBSS NQR</strong> (Nigeria Quick Response) is the unified contactless QR payment standard established by the <strong>Central Bank of Nigeria (CBN)</strong> and the <strong>Nigeria Inter-Bank Settlement System (NIBSS)</strong>.
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <h5 className="font-mono font-bold text-cyan-400 text-[11px] uppercase tracking-wider flex items-center gap-1.5">
+                  <Zap className="w-3.5 h-3.5" /> How it Operates on your Wrist:
+                </h5>
+                <ul className="space-y-2 text-[11px] text-slate-300">
+                  <li className="flex items-start gap-2 bg-slate-950/70 p-2 rounded-lg border border-slate-800">
+                    <span className="w-5 h-5 rounded-full bg-cyan-950 text-cyan-400 flex items-center justify-center text-[10px] font-bold font-mono shrink-0">1</span>
+                    <span><strong>Optical Line-of-Sight:</strong> Instead of proximity tapping via Bluetooth (BLE) or NFC, selecting NIBSS QR generates a high-contrast dynamic matrix on your watch display.</span>
+                  </li>
+                  <li className="flex items-start gap-2 bg-slate-950/70 p-2 rounded-lg border border-slate-800">
+                    <span className="w-5 h-5 rounded-full bg-cyan-950 text-cyan-400 flex items-center justify-center text-[10px] font-bold font-mono shrink-0">2</span>
+                    <span><strong>Merchant Camera Scan:</strong> Any Nigerian supermarket terminal, POS scanner, or vendor smartphone scans your watch face directly to capture the payload.</span>
+                  </li>
+                  <li className="flex items-start gap-2 bg-slate-950/70 p-2 rounded-lg border border-slate-800">
+                    <span className="w-5 h-5 rounded-full bg-cyan-950 text-cyan-400 flex items-center justify-center text-[10px] font-bold font-mono shrink-0">3</span>
+                    <span><strong>Dynamic Cryptographic Token:</strong> The QR matrix contains your 4-digit PIN-authorized HMAC signature, recipient NUBAN, and exact amount, automatically expiring after 60 seconds to prevent replay attacks.</span>
+                  </li>
+                </ul>
+              </div>
+
+              {/* Mode Comparison Table */}
+              <div className="bg-slate-950 border border-slate-800 rounded-xl p-2.5 space-y-1.5 font-mono text-[10px]">
+                <div className="text-slate-400 font-bold uppercase tracking-wider text-[9px]">Transmission Mode Protocols:</div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="bg-slate-900/80 p-2 rounded-lg border border-slate-800">
+                    <div className="text-emerald-400 font-bold flex items-center gap-1">
+                      <Radio className="w-3 h-3" /> Tap / BLE
+                    </div>
+                    <div className="text-slate-400 text-[9px] mt-0.5">Short-range Bluetooth RF transmission to companion POS receiver.</div>
+                  </div>
+                  <div className="bg-slate-900/80 p-2 rounded-lg border border-emerald-900/60">
+                    <div className="text-cyan-400 font-bold flex items-center gap-1">
+                      <QrCode className="w-3 h-3" /> NIBSS QR
+                    </div>
+                    <div className="text-slate-400 text-[9px] mt-0.5">Optical scan off your wrist for universal merchant POS cameras.</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setIsNqrInfoOpen(false)}
+              className="w-full py-2 rounded-xl text-xs font-bold uppercase tracking-wider bg-gradient-to-r from-emerald-500 to-teal-500 text-slate-950 hover:brightness-110 shadow-lg shadow-emerald-500/20 cursor-pointer transition-all"
+            >
+              Affirmative, Rodger That!
+            </button>
           </div>
         </div>
       )}

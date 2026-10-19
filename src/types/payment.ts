@@ -125,6 +125,20 @@ export const INITIAL_LINKED_BANKS: LinkedBankAccount[] = [
     cardLast4: '8201',
     tier: 'Tier 1',
   },
+  {
+    id: 'bank-keystone-07',
+    bankName: 'Keystone Bank Limited',
+    bankCode: '082',
+    accountNumber: '6019284712',
+    accountName: 'OSAGIEDE JOSHUA',
+    balance: 142000.0,
+    isPrimary: false,
+    isActiveForTransaction: false,
+    colorTheme: 'from-blue-600 to-cyan-800',
+    cbnCode: 'KEYSTONE-NG',
+    cardLast4: '4712',
+    tier: 'Tier 2',
+  },
 ];
 
 export type FaceIdPolicy = 'cbn_threshold' | 'always' | 'disabled';

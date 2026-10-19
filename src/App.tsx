@@ -237,6 +237,52 @@ export default function App() {
     );
   };
 
+  const handleLinkBank = (newBank: LinkedBankAccount) => {
+    setLinkedBanks((prev) => [newBank, ...prev]);
+  };
+
+  // Emergency 12-Hour Coercion / Duress Payment Freeze Protocol (Default: 2468, Inverse Unlock: 8642)
+  const [duressPin, setDuressPin] = useState<string>(() => {
+    try {
+      return localStorage.getItem('kudipulse_duress_pin') || '2468';
+    } catch {
+      return '2468';
+    }
+  });
+
+  const handleSetDuressPin = (pin: string) => {
+    setDuressPin(pin);
+    try {
+      localStorage.setItem('kudipulse_duress_pin', pin);
+    } catch {}
+  };
+
+  const [duressLockUntil, setDuressLockUntil] = useState<number | null>(() => {
+    try {
+      const stored = localStorage.getItem('kudipulse_duress_lock_until');
+      if (stored) {
+        const val = parseInt(stored, 10);
+        if (val > Date.now()) return val;
+      }
+    } catch {}
+    return null;
+  });
+
+  const handleTriggerDuressLock = (hours: number = 12) => {
+    const expiry = Date.now() + hours * 60 * 60 * 1000;
+    setDuressLockUntil(expiry);
+    try {
+      localStorage.setItem('kudipulse_duress_lock_until', expiry.toString());
+    } catch {}
+  };
+
+  const handleClearDuressLock = () => {
+    setDuressLockUntil(null);
+    try {
+      localStorage.removeItem('kudipulse_duress_lock_until');
+    } catch {}
+  };
+
   const generateUniqueLogId = (prefix: string = 'log') => {
     logCounterRef.current += 1;
     return `${prefix}-${Date.now()}-${logCounterRef.current}-${Math.random().toString(36).slice(2, 7)}`;
@@ -244,6 +290,12 @@ export default function App() {
 
   // When watch transmits
   const handleTransmitPacket = (packet: EncryptedPacket, rawPayload: SmartwatchPayload) => {
+    // Check if 12-Hour Emergency Coercion Lock is engaged
+    if (duressLockUntil && Date.now() < duressLockUntil) {
+      handleTransactionFailed('🚨 EMERGENCY COERCION LOCKDOWN: Outbound payments are frozen for 12 hours under Anti-Coercion Protocol.');
+      return;
+    }
+
     setInFlightPacket(packet);
     setLastRawPayload(rawPayload);
     setIsProcessing(true);
@@ -526,20 +578,6 @@ export default function App() {
               FAQ
             </button>
             <button
-              onClick={() => setActiveTab('settings')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                activeTab === 'settings'
-                  ? 'bg-emerald-600 text-white shadow-sm'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              <SettingsIcon className="w-3.5 h-3.5 text-emerald-400" />
-              <span>*Settings</span>
-              <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-slate-800 text-emerald-300">
-                {currentLanguage.flag} {currentLanguage.code}
-              </span>
-            </button>
-            <button
               onClick={() => setIsAppUnlocked(false)}
               className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-red-400 hover:text-red-300 bg-red-950/40 hover:bg-red-900/60 border border-red-800/50 transition-all cursor-pointer"
               title="Lock app immediately (Requires 6-Digit Password or Biometric Scan)"
@@ -572,6 +610,24 @@ export default function App() {
               </span>
             </button>
           </div>
+
+          {/* AT THE TOP RIGHT CORNER OF THE SCREEN: ICON "⚙️" SETTING TO ACCESS THE SETTINGS LIST */}
+          <button
+            type="button"
+            onClick={() => setActiveTab('settings')}
+            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all shadow-lg cursor-pointer border ring-1 ${
+              activeTab === 'settings'
+                ? 'bg-gradient-to-r from-emerald-500 to-teal-500 text-slate-950 border-emerald-400 ring-emerald-400/50 shadow-emerald-500/25 scale-[1.02]'
+                : 'bg-slate-900/95 hover:bg-slate-800 text-slate-100 hover:text-white border-slate-700/80 hover:border-emerald-500/70 ring-slate-800 hover:shadow-emerald-950/50'
+            }`}
+            title="Access Settings List (⚙️) - PIN, Linked Banks, Biometrics & Preferences"
+          >
+            <span className="text-base select-none leading-none animate-pulse">⚙️</span>
+            <span className="font-extrabold tracking-wide">Settings</span>
+            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-950/80 text-emerald-300 border border-emerald-900/50">
+              {currentLanguage.flag} {currentLanguage.code}
+            </span>
+          </button>
         </div>
       </header>
 
@@ -623,9 +679,20 @@ export default function App() {
                     <Activity className="w-3.5 h-3.5 text-emerald-400" />
                     Device 01: Smartwatch Screen
                   </span>
-                  <span className="text-[10px] font-mono text-emerald-400">
-                    Standalone UI
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('settings')}
+                      className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white text-[10px] font-semibold border border-slate-700/80 transition-all cursor-pointer"
+                      title="Access Settings List"
+                    >
+                      <span>⚙️</span>
+                      <span>Settings</span>
+                    </button>
+                    <span className="text-[10px] font-mono text-emerald-400">
+                      Standalone UI
+                    </span>
+                  </div>
                 </div>
                 <SmartwatchSimulator
                   platform={platform}
@@ -635,11 +702,20 @@ export default function App() {
                   lastWatchStatus={lastWatchStatus}
                   accountBalance={activeBank ? activeBank.balance : accountBalance}
                   transactionPin={transactionPin}
+                  onChangeTransactionPin={setTransactionPin}
                   watchPasscode={appPasscode}
                   pinRequiredThreshold={pinRequiredThreshold}
+                  onChangePinRequiredThreshold={setPinRequiredThreshold}
                   linkedBanks={linkedBanks}
                   activeBank={activeBank}
                   onSwitchActiveBank={handleActivateBank}
+                  onOpenSettings={() => setActiveTab('settings')}
+                  hapticEnabled={hapticEnabled}
+                  onToggleHaptic={() => setHapticEnabled(!hapticEnabled)}
+                  soundEnabled={soundEnabled}
+                  onToggleSound={() => setSoundEnabled(!soundEnabled)}
+                  currentLanguage={currentLanguage}
+                  onSelectLanguage={setCurrentLanguage}
                 />
               </div>
 
@@ -661,6 +737,25 @@ export default function App() {
                   onTransactionFailed={handleTransactionFailed}
                   onViewReceiptRequest={handleOpenLatestReceipt}
                   onOpenSettings={() => setActiveTab('settings')}
+                  accountBalance={activeBank ? activeBank.balance : accountBalance}
+                  linkedBanks={linkedBanks}
+                  activeBank={activeBank}
+                  onSwitchActiveBank={handleActivateBank}
+                  onLinkBank={handleLinkBank}
+                  transactions={transactions}
+                  userName={currentOperatorName}
+                  userEmail={currentOperatorEmail}
+                  userPasscode={appPasscode}
+                  paymentPin={transactionPin}
+                  onUpdateCredentials={(passcode, pin) => {
+                    if (passcode) setAppPasscode(passcode);
+                    if (pin) setTransactionPin(pin);
+                  }}
+                  duressLockUntil={duressLockUntil}
+                  onTriggerDuressLock={handleTriggerDuressLock}
+                  onClearDuressLock={handleClearDuressLock}
+                  duressPin={duressPin}
+                  onUpdateDuressPin={handleSetDuressPin}
                 />
               </div>
             </div>

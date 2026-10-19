@@ -1016,10 +1016,11 @@ export const SettingsView: React.FC<Props> = ({
                   <Phone className="w-3.5 h-3.5 text-slate-400" /> Phone Number (SMS Alerts Target)
                 </label>
                 <input
-                  type="text"
+                  type="tel"
+                  placeholder="e.g. +234 810 911 8552"
                   value={phoneNumber}
                   onChange={(e) => setPhoneNumber(e.target.value)}
-                  className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-2xl text-xs text-white focus:outline-none focus:border-cyan-500 font-mono"
+                  className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-2xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500 font-mono shadow-inner"
                 />
               </div>
 
